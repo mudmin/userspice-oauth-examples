@@ -1,0 +1,5 @@
+Copy the userspice-oauth-client folder to the wp-content/plugins folder of your WordPress installation.
+Activate the plugin in the WordPress admin panel.
+There is a settings button in the plugin manager underneath the name, or you can visit settings on the left side of the page.  
+
+Enter your information as described in the plugin

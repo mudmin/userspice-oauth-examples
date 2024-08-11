@@ -1,0 +1,46 @@
+Put these files in the root of your web server.
+
+Update the oauth_config.php file and access oauth_request.php from your browser.  
+
+Your output should be similar to the following:
+
+Authentication successful!
+Access Token: 08ab68be69608e69c9e99197af2ceae55273be48254d94a267f5b31d6c5b290f
+Expires In: 3600 seconds
+
+var_dump of token data:
+array(3) { ["access_token"]=> string(64) "08ab68be69608e69c9e99197af2ceae55273be48254d94a267f5b31d6c5b290f" ["token_type"]=> string(6) "Bearer" ["expires_in"]=> int(3600) }
+var_dump of response:
+array(3) {
+  ["userdata"]=>
+  array(6) {
+    ["fname"]=>
+    string(6) "System"
+    ["lname"]=>
+    string(13) "Administrator"
+    ["email"]=>
+    string(26) "admin@yourdomain.com"
+    ["language"]=>
+    string(5) "en-US"
+    ["created"]=>
+    string(19) "0000-00-00 00:00:00"
+    ["email_verified"]=>
+    int(1)
+  }
+  ["tags"]=>
+  array(0) {
+  }
+  ["instructions"]=>
+  array(4) {
+    ["updateUserData"]=>
+    bool(true)
+    ["updateTags"]=>
+    bool(true)
+    ["createTagIfNeeded"]=>
+    bool(true)
+    ["removeTagIfNotSpecified"]=>
+    bool(true)
+  }
+}
+
+Your login function here. You can now use the access token to make authenticated requests.

@@ -1,0 +1,59 @@
+Install rust from https://www.rust-lang.org/tools/install
+If you had your command prompt open before installing rust, close it and reopen it
+
+mkdir rust-oauth-client
+cd rust-oauth-client
+cargo init
+
+add the following to the [dependencies] section of your Cargo.toml file
+
+actix-web = "4.3"
+reqwest = { version = "0.11", features = ["json"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+url = "2.3"
+dotenv = "0.15"
+rand = "0.8"
+
+replace the contents of src/main.rs with the the main.rs from this folder
+copy the .env file to the rust-oauth-client directory
+
+configure the .env with your credentials
+Make sure the server is configured with your endpoint and port of http://localhost:8080/oauth_response
+
+
+cargo run
+In your browser, navigate to http://localhost:8080/ to initiate the OAuth flow
+
+If everything works as expected, you should see output like:
+
+Authentication successful!
+Access Token: a46301bd100abb5a63755b962505fb9f848c3b444feccd9e838347eb54b8e0c7
+
+Expires In: 3600 seconds
+
+Token Data:
+{
+  "access_token": "a46301bd100abb5a63755b962505fb9f848c3b444feccd9e838347eb54b8e0c7",
+  "expires_in": 3600
+}
+Response Data:
+{
+  "instructions": {
+    "createTagIfNeeded": true,
+    "removeTagIfNotSpecified": true,
+    "updateTags": true,
+    "updateUserData": true
+  },
+  "tags": [],
+  "userdata": {
+    "created": "0000-00-00 00:00:00",
+    "email": "admin@yourdomain.com",
+    "email_verified": 1,
+    "fname": "System",
+    "language": "en-US",
+    "lname": "Administrator"
+  }
+}
+Your login function here. You can now use the access token to make authenticated requests.

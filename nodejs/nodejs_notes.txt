@@ -1,0 +1,41 @@
+mkdir nodejs-oauth-client
+cd nodejs-oauth-client
+npm init -y
+npm install express express-session axios
+copy the oauth_app.js file from the examples/nodejs directory to the nodejs-oauth-client directory   
+Make sure your server is configured to hit the nodejs endpoint and port
+run 
+node oauth_app.js
+visit http://localhost:3000/oauth_request in your browser to initiate the OAuth flow
+
+If everything works as expected, you should see output like:
+Authentication successful!
+Access Token: 244f4d458dc16eea262f28dde8739210bc7b16d9a0684527e8bbf4c5496c5900
+
+Expires In: 3600 seconds
+
+Detailed token data:
+{
+  "access_token": "244f4d458dc16eea262f28dde8739210bc7b16d9a0684527e8bbf4c5496c5900",
+  "token_type": "Bearer",
+  "expires_in": 3600
+}
+Detailed response data:
+{
+  "userdata": {
+    "fname": "System",
+    "lname": "Administrator",
+    "email": "admin@yourdomain.com",
+    "language": "en-US",
+    "created": "0000-00-00 00:00:00",
+    "email_verified": 1
+  },
+  "tags": [],
+  "instructions": {
+    "updateUserData": true,
+    "updateTags": true,
+    "createTagIfNeeded": true,
+    "removeTagIfNotSpecified": true
+  }
+}
+Your login function here. You can now use the access token to make authenticated requests.

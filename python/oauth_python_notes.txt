@@ -1,0 +1,31 @@
+update oauth_config.py
+Make sure your server is configured to hit the python endpoint and port
+pip install flask requests
+python oauth_app.py
+Access http://localhost:8000/oauth_request in your browser to initiate the OAuth flow.
+The oauth_response.py script will handle the callback and display the results
+
+If everything works as expected, you should see output like:
+Authentication successful!
+Access Token: 7e29708b95d7a20ac7a84b0d6afb8ef6f304c61674c20403979db9e091463e87
+Expires In: 3600 seconds
+
+Detailed token data:
+{ 'access_token': '7e29708b95d7a20ac7a84b0d6afb8ef6f304c61674c20403979db9e091463e87',
+  'expires_in': 3600,
+  'token_type': 'Bearer'}
+
+Detailed response data:
+{ 'instructions': { 'createTagIfNeeded': True,
+                    'removeTagIfNotSpecified': True,
+                    'updateTags': True,
+                    'updateUserData': True},
+  'tags': [],
+  'userdata': { 'created': '0000-00-00 00:00:00',
+                'email': 'admin@yourdomain.com',
+                'email_verified': 1,
+                'fname': 'System',
+                'language': 'en-US',
+                'lname': 'Administrator'}}
+
+Your login function here. You can now use the access token to make authenticated requests.

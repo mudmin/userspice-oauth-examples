@@ -1,0 +1,38 @@
+Make sure nodejs and npm are installed. https://nodejs.org/en/download/
+
+npx create-react-app react-oauth-client
+cd react-oauth-client
+npm install axios react-router-dom
+//be sure to back up your src/App.js file before replacing it.  This is only a demo. 
+
+copy the examples/react/src folder to the react-oauth-client directory /src directory
+Edit the OAuthRequest.js and OAuthResponse.js files in there with your own configuration
+Update the server to hit the react endpoint and port of http://localhost:3000/oauth_response
+
+run npm start
+
+Open a web browser and navigate to http://localhost:3000/oauth_request to see your React app. Click on "Start OAuth Flow" to initiate the OAuth process.
+
+If everything works as expected, you should see output like:
+Authentication successful!
+Access Token (Code): a16e0cbc6300b16d941fbfc4dedc0032
+
+User Data:
+{
+  "fname": "System",
+  "lname": "Administrator",
+  "email": "admin@yourdomain.com",
+  "language": "en-US",
+  "created": "0000-00-00 00:00:00",
+  "email_verified": 1
+}
+Tags:
+[]
+Instructions:
+{
+  "updateUserData": true,
+  "updateTags": true,
+  "createTagIfNeeded": true,
+  "removeTagIfNotSpecified": true
+}
+Your login function here. You can now use the access token to make authenticated requests.

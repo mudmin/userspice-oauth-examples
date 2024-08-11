@@ -1,0 +1,54 @@
+Make sure ruby is installed https://rubyinstaller.org/
+verify ruby at the command prompt with ruby -v
+if you had your command prompt open before installing ruby, close it and reopen it
+
+Install gems
+
+gem install sinatra
+gem install sinatra-contrib
+gem install httpartycd 
+gem install rackup
+
+mkdir ruby-oauth-client
+cd ruby-oauth-client
+copy app.rb to the ruby-oauth-client directory
+
+configure the oauth_config.rb with your credentials
+Make sure the server is configured with your endpoint and port of http://localhost:4567/oauth_response
+
+Open a web browser and navigate to http://localhost:4567/oauth_request to initiate the OAuth flow.
+
+If everything works as expected, you should see output like:
+
+Authentication successful!
+Access Token: 75a74b0072c1e625062f017c8b76663d2ec610b0c2181883b55811f8848c392f
+
+Expires In: 3600 seconds
+
+Detailed token data:
+{
+  "access_token": "75a74b0072c1e625062f017c8b76663d2ec610b0c2181883b55811f8848c392f",
+  "token_type": "Bearer",
+  "expires_in": 3600
+}
+Detailed response data:
+{
+  "userdata": {
+    "fname": "System",
+    "lname": "Administrator",
+    "email": "admin@yourdomain.com",
+    "language": "en-US",
+    "created": "0000-00-00 00:00:00",
+    "email_verified": 1
+  },
+  "tags": [
+
+  ],
+  "instructions": {
+    "updateUserData": true,
+    "updateTags": true,
+    "createTagIfNeeded": true,
+    "removeTagIfNotSpecified": true
+  }
+}
+Your login function here. You can now use the access token to make authenticated requests.

@@ -1,0 +1,43 @@
+Obviously, make sure go is installed. https://golang.org/dl/
+mkdir go-oauth-client
+cd go-oauth-client
+go mod init go-oauth-client
+
+copy main.go to go-oauth-client directory
+configure the oauth_config.go with your credentials
+Make sure the server is configured with your endpoint and port of http://yourdomain.com:8080/oauth_response
+run go run main.go
+
+Open a web browser and navigate to http://localhost:8080/oauth_request to initiate the OAuth flow.
+
+If everything works as expected, you should see output like:
+Authentication successful!
+Access Token: 395497c92bcde347c3eebdc961fd2390b8a72fa1a8671c0b3d5dab60cb3e28ce
+
+Expires In: %!d(float64=3600) seconds
+
+Detailed token data:
+{
+  "access_token": "395497c92bcde347c3eebdc961fd2390b8a72fa1a8671c0b3d5dab60cb3e28ce",
+  "expires_in": 3600,
+  "token_type": "Bearer"
+}
+Detailed response data:
+{
+  "instructions": {
+    "createTagIfNeeded": true,
+    "removeTagIfNotSpecified": true,
+    "updateTags": true,
+    "updateUserData": true
+  },
+  "tags": [],
+  "userdata": {
+    "created": "0000-00-00 00:00:00",
+    "email": "testguy@userspice.com",
+    "email_verified": 1,
+    "fname": "test",
+    "language": "en-US",
+    "lname": "guy"
+  }
+}
+Your login function here. You can now use the access token to make authenticated requests.
