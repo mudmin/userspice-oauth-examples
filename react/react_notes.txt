@@ -3,9 +3,11 @@ Make sure nodejs and npm are installed. https://nodejs.org/en/download/
 npx create-react-app react-oauth-client
 cd react-oauth-client
 npm install axios react-router-dom
+
 //be sure to back up your src/App.js file before replacing it.  This is only a demo. 
 
 copy the examples/react/src folder to the react-oauth-client directory /src directory
+
 Edit the OAuthRequest.js and OAuthResponse.js files in there with your own configuration
 Update the server to hit the react endpoint and port of http://localhost:3000/oauth_response
 
