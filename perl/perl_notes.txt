@@ -1,0 +1,58 @@
+UserSpice Vanilla Perl OAuth Client Example
+------------------------------------------
+
+This directory contains a basic Perl script example of an OAuth 2.0 client for UserSpice.
+It uses common Perl modules:
+- `LWP::UserAgent` for making HTTP requests.
+- `URI` and `URI::Escape` for URL construction and manipulation.
+- `Digest::MD5` for a simple way to generate a 'state' string (a UUID module would be more robust).
+- `JSON` for parsing the token response (you might need to install this: `cpan JSON`).
+
+Files:
+- oauth_config.pl: A Perl script that returns a hash reference containing the OAuth client
+  configuration (client ID, secret, server URLs).
+  **Important:** You MUST update the placeholder values in this file with your
+  actual UserSpice server details and client credentials.
+- oauth_request.pl: Simulates the first step of the OAuth 2.0 authorization code flow.
+  It constructs the authorization URL.
+- oauth_response.pl: Simulates the second step, handling the callback. It prompts for
+  the 'code' and 'state', then exchanges the code for an access token using `LWP::UserAgent`.
+
+How to "Run" (Simulate):
+1. Ensure you have Perl installed.
+2. Install necessary CPAN modules if you don't have them:
+   `cpan LWP::UserAgent`
+   `cpan URI`
+   `cpan Digest::MD5` (usually core, but good to check)
+   `cpan JSON`
+   (You may need to configure CPAN first if you haven't used it: `perl -MCPAN -e shell`, then `o conf init`)
+
+3. Make the scripts executable (optional, but good practice):
+   `chmod +x oauth_request.pl oauth_response.pl`
+
+4. Run `oauth_request.pl` to get the authorization URL:
+   `./oauth_request.pl` (or `perl oauth_request.pl`)
+   - This will output a URL. In a real scenario, you'd open this in a browser.
+   - It will also output a "generated state". Keep this value.
+
+5. Simulate Authorization:
+   - Imagine opening the URL in a browser, logging into UserSpice, and authorizing the application.
+   - UserSpice would then redirect back to your specified `redirect_uri` with `code` and `state` parameters.
+     Example: `https://your_app_domain.com/oauth_response_perl?code=SOME_CODE_FROM_USERSPICE&state=THE_STATE_YOU_GENERATED`
+
+6. Run `oauth_response.pl` to exchange the code for a token:
+   `./oauth_response.pl` (or `perl oauth_response.pl`)
+   - The program will prompt you:
+     - "Enter the 'code' received from UserSpice:": Paste `SOME_CODE_FROM_USERSPICE`.
+     - "Enter the 'state' received from UserSpice...:": Paste `THE_STATE_YOU_GENERATED`.
+     - "Enter the original 'state' you stored...": Paste the "generated state" from step 4.
+   - If successful, it will print the token response from the server.
+
+Important Considerations:
+- This is a command-line simulation. Real Perl web applications (e.g., using CGI, PSGI/Plack, Mojolicious, Dancer) would handle HTTP interactions, state management (sessions/cookies), and templating differently.
+- Error Handling: Basic. Production applications require more comprehensive error checking.
+- State Management: The 'state' parameter is crucial for CSRF protection. In a web app, it would be stored in a user session or a secure cookie.
+- Dependencies: Relies on a few common CPAN modules. Ensure they are installed in your Perl environment.
+- HTTPS: Assumes HTTPS for OAuth endpoints. `LWP::UserAgent` handles HTTPS if `LWP::Protocol::https` is installed (usually is, or `cpan LWP::Protocol::https`).
+- Configuration: Client ID/secret are in `oauth_config.pl`. Securely manage these in production.
+```

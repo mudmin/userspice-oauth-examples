@@ -1,0 +1,6 @@
+userspice_oauth.settings_form:
+  title: 'UserSpice OAuth'
+  description: 'Configure UserSpice OAuth client settings.'
+  parent: system.admin_config_services # Places it under Configuration > Web services
+  route_name: userspice_oauth.settings_form
+  weight: 100

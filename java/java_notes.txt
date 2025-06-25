@@ -1,0 +1,48 @@
+UserSpice Vanilla Java OAuth Client Example
+-------------------------------------------
+
+This directory contains a basic, pure Java example of an OAuth 2.0 client for UserSpice.
+It does not rely on any external libraries beyond standard Java SE.
+
+Files:
+- OAuthClientConfig.java: Holds the configuration for your OAuth client (client ID, secret, server URLs).
+  **Important:** You MUST update the placeholder values in this file with your actual UserSpice server details and client credentials.
+- OAuthRequest.java: Simulates the first step of the OAuth 2.0 authorization code flow.
+  It constructs the authorization URL that a user would be redirected to.
+  Since this is a command-line example, it prints the URL instead of performing a browser redirect.
+  It also generates a 'state' parameter for CSRF protection.
+- OAuthResponse.java: Simulates the second step, handling the callback from the OAuth server.
+  It prompts the user to enter the 'code' and 'state' they would receive as query parameters on their redirect URI.
+  It then attempts to exchange this code for an access token by making a POST request to the UserSpice token endpoint.
+
+How to "Run" (Simulate):
+1. Compile all Java files:
+   javac OAuthClientConfig.java OAuthRequest.java OAuthResponse.java
+   (Ensure you have a JDK installed and configured.)
+
+2. Run OAuthRequest to get the authorization URL:
+   java OAuthRequest
+   - This will output a URL. In a real scenario, you'd open this in a browser.
+   - It will also output a "generated state". Keep this value.
+
+3. Simulate Authorization:
+   - Imagine opening the URL in a browser, logging into UserSpice, and authorizing the application.
+   - UserSpice would then redirect back to your specified `redirect_uri` with `code` and `state` parameters.
+     Example: `https://your_app_domain.com/oauth_response_java?code=SOME_CODE_FROM_USERSPICE&state=THE_STATE_YOU_GENERATED`
+
+4. Run OAuthResponse to exchange the code for a token:
+   java OAuthResponse
+   - The program will prompt you:
+     - "Enter the 'code' received from UserSpice:": Paste the `SOME_CODE_FROM_USERSPICE` here.
+     - "Enter the 'state' received from UserSpice:": Paste `THE_STATE_YOU_GENERATED` (this should match the state in the redirect URL).
+     - "Enter the original 'state' you stored (from OAuthRequest output):": Paste the "generated state" from step 2.
+   - If successful, it will print the token response from the server.
+
+Important Considerations:
+- This is a command-line simulation. A real web application would handle HTTP redirects, session management (for the 'state' parameter), and request/response objects differently (e.g., using Servlets or a web framework).
+- Error Handling: Basic error handling is included, but a production application would need more robust error management.
+- JSON Parsing: The example prints the raw token response. In a real app, you'd parse the JSON to extract the access token, refresh token, expiry, etc. (e.g., using libraries like Jackson or Gson, though this example avoids them to stay "vanilla").
+- HTTPS: Assumes HTTPS for all OAuth endpoints, which is critical for security.
+- No External Libraries: To keep it simple and dependency-free. Real-world Java apps often use libraries like Apache HttpClient, OkHttp for HTTP calls, or specific OAuth client libraries (e.g., from Spring Security, ScribeJava) to simplify these flows.
+- Configuration: Client ID and secret are hardcoded. In production, use environment variables or secure configuration files.
+```

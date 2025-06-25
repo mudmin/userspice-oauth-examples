@@ -1,0 +1,81 @@
+WooCommerce UserSpice OAuth Login Plugin Notes
+---------------------------------------------
+
+This directory (`wordpress_plugin_woocommerce`) contains the files for a WordPress plugin designed to integrate UserSpice OAuth with WooCommerce. It allows customers to log in or register on a WooCommerce store using their UserSpice account credentials.
+
+**Plugin Files:**
+
+*   `woocommerce-userspice-oauth.php`: The main plugin file. It handles:
+    *   Plugin initialization and hooks.
+    *   Admin settings page for UserSpice OAuth configuration.
+    *   Displaying a "Login with UserSpice" button on WooCommerce login and registration forms.
+    *   The OAuth 2.0 flow:
+        *   Redirecting to the UserSpice server for authorization.
+        *   Handling the callback from UserSpice.
+        *   Exchanging the authorization code for an access token.
+        *   Fetching user information from UserSpice.
+    *   Logging in existing WordPress/WooCommerce users or creating new customer accounts.
+*   `languages/` (Optional directory): Would contain `.pot`, `.po`, and `.mo` files for internationalization if translations were provided. This example uses WordPress translation functions like `__()` and `_e()`, so it's ready for translation.
+
+**Installation:**
+
+1.  **Package the Plugin (if needed):**
+    *   If you have the `wordpress_plugin_woocommerce` directory, create a ZIP file containing all its contents.
+    *   The structure inside the ZIP should be:
+        ```
+        woocommerce-userspice-oauth.php
+        (and if you add a languages folder: languages/...)
+        ```
+    *   Name the ZIP file something like `woocommerce-userspice-oauth.zip`.
+
+2.  **Install in WordPress:**
+    *   Log in to your WordPress Administrator dashboard.
+    *   Navigate to "Plugins" > "Add New".
+    *   Click the "Upload Plugin" button at the top.
+    *   Choose the ZIP file you created and click "Install Now".
+    *   After installation, click "Activate Plugin".
+
+**Configuration:**
+
+1.  **Access Settings:**
+    *   Once activated, go to "Settings" > "UserSpice OAuth" in your WordPress admin menu.
+
+2.  **Configure UserSpice OAuth Details:**
+    *   You **must** fill in the following fields:
+        *   **UserSpice Server URL:** The full base URL of your UserSpice installation (e.g., `https://your-userspice-domain.com/usersc/`).
+        *   **Client ID:** The Client ID obtained from your UserSpice OAuth Server plugin settings for this WooCommerce client.
+        *   **Client Secret:** The Client Secret for this client.
+        *   **Endpoint Paths:** (Authorization, Token, User Info) - Default paths for UserSpice are provided, but verify and adjust if your UserSpice setup is different.
+        *   **Scope:** Space-separated scopes (e.g., `profile email`). `email` is essential for linking accounts.
+        *   **Auto-create User:** Check this if you want new WordPress customer accounts to be created automatically if a user logs in via UserSpice and doesn't already have an account on your store.
+    *   **Callback URL (Read-Only):** The settings page will display the **Callback URL** (Redirect URI) that this plugin uses. It will look like:
+        `https://your-wordpress-store.com/?wc_userspice_oauth_callback=1`
+        You **must** copy this exact URL.
+
+3.  **Set Redirect URI in UserSpice:**
+    *   In your UserSpice OAuth Server plugin configuration (for the client application you created for WooCommerce), set the **Redirect URI** to the Callback URL you copied from the WordPress plugin settings page.
+
+**Usage:**
+
+*   Once the plugin is configured and the Redirect URI is correctly set in UserSpice:
+    *   A "Login with UserSpice" button will automatically appear on your WooCommerce login form (`/my-account/`) and potentially the registration form.
+    *   Customers can click this button to be redirected to UserSpice.
+    *   After logging in and authorizing on UserSpice, they will be redirected back to your store.
+    *   If their UserSpice email matches an existing customer account, they will be logged in.
+    *   If "Auto-create User" is enabled and their email doesn't match an existing account, a new customer account will be created for them, and they will be logged in.
+
+**Important Notes:**
+
+*   **WooCommerce Requirement:** This plugin requires WooCommerce to be installed and active. It will show an admin notice if WooCommerce is not detected.
+*   **HTTPS:** Both your WordPress/WooCommerce store and your UserSpice server **must** run on HTTPS for secure OAuth operations.
+*   **UserSpice API:** The plugin assumes the UserSpice `/api.php` (or configured user info endpoint) returns user data including at least `email`, and preferably `id`, `username`, `fname`, `lname`. The plugin attempts to use these for creating/updating WordPress user profiles.
+*   **WordPress Nonces & Transients:** The plugin uses WordPress nonces and transients for CSRF protection (the `state` parameter in OAuth).
+*   **Error Handling:** Basic error messages are provided to the user via WooCommerce notices (`wc_add_notice`). More detailed errors might be logged if WordPress debugging is enabled.
+*   **Styling:** The "Login with UserSpice" button is a standard WordPress/WooCommerce button. You can style it further using CSS targeting the class `userspice-oauth-button` or `wc-userspice-oauth-login`.
+*   **Testing:**
+    *   Test with a new UserSpice user (auto-creation enabled/disabled).
+    *   Test with an existing WooCommerce customer whose email matches a UserSpice user.
+    *   Test the login flow from different points (e.g., login page, checkout login).
+*   **Plugin Conflicts:** While unlikely for a focused plugin like this, always test for conflicts with other plugins, especially those modifying login or registration processes.
+*   **Translation Ready:** The plugin uses WordPress localization functions. A `.pot` file could be generated to allow for translations.
+```

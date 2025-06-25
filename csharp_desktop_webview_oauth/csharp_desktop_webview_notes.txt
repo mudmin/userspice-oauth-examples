@@ -1,0 +1,102 @@
+C# Desktop WebView OAuth Example for UserSpice (WebView2)
+-------------------------------------------------------
+
+This directory contains a conceptual C# code example demonstrating how a desktop application (.NET WinForms or WPF) can perform OAuth 2.0 authentication with UserSpice using the `WebView2` control (Microsoft Edge Chromium-based).
+
+**Files:**
+
+*   `MainForm.cs` (Conceptual): Contains a class `UserSpiceOAuthClient` with the core logic for:
+    *   Initiating the OAuth flow by navigating a `WebView2` control to the UserSpice authorization URL.
+    *   Intercepting the redirect from UserSpice to a custom URI scheme (e.g., `myapp://callback`) or a `http://localhost:PORT` URL.
+    *   Extracting the `authorization_code` and `state`.
+    *   Exchanging the code for an access token using `System.Net.Http.HttpClient`.
+    *   Fetching user information from UserSpice.
+    *   Includes commented-out example usage within a conceptual WinForms/WPF form.
+
+**Core Concepts:**
+
+1.  **WebView2 Control:** The application uses `WebView2` to embed a modern web browser view for displaying the UserSpice login and authorization pages. This provides a seamless in-app experience.
+2.  **Redirect URI Handling:**
+    *   **Custom URI Scheme (Recommended):**
+        *   The application registers a custom URI scheme (e.g., `your-custom-app-scheme://`).
+        *   The `REDIRECT_URI` configured in UserSpice and used by the app is set to something like `your-custom-app-scheme://callback`.
+        *   When UserSpice redirects, the OS launches the desktop application with the full callback URL, which the app then parses.
+        *   `WebView2`'s `NavigationStarting` event is used to detect navigation to this custom scheme. The navigation is then cancelled in the WebView, and the URL is processed by the app.
+    *   **Localhost HTTP Redirect:**
+        *   Alternatively, a `http://localhost:PORT/callback` URL can be used as the `REDIRECT_URI`.
+        *   The `WebView2.NavigationStarting` event intercepts this navigation. No separate local HTTP server is strictly required in C# if WebView2 can capture the URL before it attempts a real network request to localhost (which would fail if no server is listening). The browser control itself effectively "catches" the redirect.
+3.  **State Parameter:** A unique `state` parameter is generated and used to prevent CSRF attacks.
+4.  **Authorization Code Flow:** The application uses the OAuth 2.0 Authorization Code flow.
+    *   **Security Note (PKCE):** For public clients like desktop applications, PKCE (Proof Key for Code Exchange) is highly recommended. It allows the app to securely obtain an access token without needing to embed a `client_secret`. This example uses the standard Authorization Code flow where `client_secret` is used in the token exchange step. If UserSpice supports PKCE, the flow should be adapted.
+5.  **Token Exchange & User Info:** Standard HTTP POST (for token) and GET (for user info) requests are made using `HttpClient`. JSON responses are parsed using `System.Text.Json`.
+
+**Setup and Project Configuration (Conceptual):**
+
+1.  **Create a .NET Desktop Project:**
+    *   Use Visual Studio or the .NET CLI to create a Windows Forms App or WPF App project (.NET Framework or .NET Core/.NET 5+).
+
+2.  **Install WebView2 SDK:**
+    *   Add the `Microsoft.Web.WebView2` NuGet package to your project.
+    *   Ensure the target machine has the WebView2 Runtime installed (it's often included with recent Windows versions or Edge updates). Your app can also bundle or prompt for its installation.
+
+3.  **Add WebView2 Control to UI:**
+    *   **WinForms:** Drag the `WebView2` control from the Toolbox onto your form, or create it in code.
+    *   **WPF:** Add the `wv2:WebView2` element to your XAML in a Window or UserControl. You'll need to add the XML namespace: `xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"`.
+
+4.  **Configure UserSpice Details:**
+    *   In `MainForm.cs` (or your equivalent class), update the placeholder constants:
+        *   `UserSpiceServerUrl`, `ClientId`, `ClientSecret`.
+        *   Choose and set the `RedirectUri` (either `RedirectUriCustomScheme` or `RedirectUriLocalhost`).
+    *   Ensure this `RedirectUri` is registered in your UserSpice OAuth client application settings.
+
+5.  **Register Custom URI Scheme (If using `RedirectUriCustomScheme`):**
+    *   This is OS-specific and typically done via the application's installer or registry entries.
+    *   **Windows:** Involves creating registry keys under `HKEY_CLASSES_ROOT` that associate your custom scheme (e.g., `your-custom-app-scheme`) with your application's executable.
+        *   Example keys:
+            *   `HKEY_CLASSES_ROOT\your-custom-app-scheme`
+                *   `(Default)` = "URL:Your App Protocol"
+                *   `URL Protocol` = "" (empty string)
+            *   `HKEY_CLASSES_ROOT\your-custom-app-scheme\shell\open\command`
+                *   `(Default)` = `"C:\path\to\your\app.exe" "%1"` (The `%1` passes the full URL to your app).
+    *   Your application needs to handle command-line arguments to process the activation URL when launched via the custom scheme. The `Main` method or `Application.Startup` event would parse these arguments. The provided example focuses on the WebView part, assuming the app is already running when login is initiated. For full custom scheme activation, additional logic is needed to pass the URL to the running instance or process it on startup.
+
+**Running the Conceptual Example:**
+
+1.  Integrate the `UserSpiceOAuthClient` class logic into your WinForms/WPF application.
+2.  Connect the `InitiateLogin` method to a "Login with UserSpice" button.
+3.  Wire up the `OAuthCodeReceived` event to handle the response (call `ExchangeCodeAndGetUserInfoAsync`).
+4.  Handle the `UserInfoReceived` event to process the user's details.
+5.  Run your application.
+
+**Authentication Flow:**
+
+1.  User clicks the "Login with UserSpice" button.
+2.  `InitiateLogin` is called, and the `WebView2` control navigates to the UserSpice auth URL.
+3.  User logs in and authorizes the application on the UserSpice page within the WebView.
+4.  UserSpice redirects to your configured `RedirectUri`.
+5.  The `CoreWebView2_NavigationStarting` event handler intercepts this redirect:
+    *   It cancels the actual navigation in the WebView.
+    *   It extracts the `code` and `state`.
+    *   It fires the `OAuthCodeReceived` event.
+6.  Your app, handling `OAuthCodeReceived`, calls `ExchangeCodeAndGetUserInfoAsync`.
+7.  This method exchanges the code for an access token and then fetches user info.
+8.  The `UserInfoReceived` event is fired with the user's details.
+9.  Your application can then proceed (e.g., close login window, update UI).
+
+**Important Considerations:**
+
+*   **PKCE:** Strongly recommended for desktop apps to avoid storing the client secret.
+*   **Error Handling:** The example includes basic `Debug.WriteLine`. Production apps need robust user-facing error messages and logging.
+*   **WebView2 Initialization:** `EnsureCoreWebView2Async` must be called and complete successfully before using the `CoreWebView2` property.
+*   **Thread Safety:** UI updates (like hiding the WebView or showing messages) from async methods or event handlers might need to be dispatched to the UI thread (e.g., using `Control.Invoke` in WinForms or `Dispatcher.Invoke` in WPF). The example is simplified in this regard.
+*   **User Experience:**
+    *   Hide or close the WebView after the callback is successfully processed.
+    *   Provide visual feedback during the process.
+*   **HttpUtility for .NET Core/5+:** If not targeting .NET Framework, `System.Web.HttpUtility` is not available by default. You can:
+    *   Add a Framework Reference to `System.Web.dll` if your project type allows.
+    *   Use a library like `CommunityToolkit.Maui. अब्सट्रैक्शन्स.HttpUtility.UrlEncode` / `ParseQueryString`.
+    *   Implement manual query string parsing/building for simple cases.
+    The example uses `HttpUtility` assuming a context where it's available or can be added.
+
+This conceptual example provides the core C# logic for integrating UserSpice OAuth using WebView2.
+```

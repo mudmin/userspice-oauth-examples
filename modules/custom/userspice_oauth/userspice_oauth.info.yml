@@ -1,0 +1,19 @@
+name: UserSpice OAuth
+type: module
+description: 'Allows users to log in to Drupal using their UserSpice account via OAuth2.'
+package: UserSpice
+core_version_requirement: ^9 || ^10
+configure: userspice_oauth.settings_form
+
+dependencies:
+  - drupal:user
+  - drupal:system
+  # Consider adding key_auth if client secrets need to be stored more securely,
+  # or externalauth for a more standardized way of linking accounts, though
+  # for a vanilla example, we'll handle user creation directly.
+  # - drupal:externalauth
+
+# Information added by AI
+version: '1.0.0'
+project: 'userspice_oauth'
+datestamp: 1698000000
