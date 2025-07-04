@@ -3,7 +3,7 @@
  * Plugin Name: UserSpice OAuth Client
  * Plugin URI: https://github.com/mudmin/wordpress-userspice-oauth-client
  * Description: OAuth2 client for UserSpice integration with WordPress
- * Version: 1.1
+ * Version: 1.2
  * Author: Dan Hoover
  * Author URI: https://userspice.com
  */
@@ -27,8 +27,9 @@ class UserSpice_OAuth_Client {
         add_action('admin_menu', array($this, 'add_settings_page'));
         add_action('admin_init', array($this, 'register_settings'));
 
-        // Add login button
-        add_action('login_form', array($this, 'add_login_button'));
+        // Add login button and move it to the top with JavaScript
+        add_action('login_form', array($this, 'add_oauth_section'));
+        add_action('login_head', array($this, 'add_oauth_positioning_script'));
 
         // Handle OAuth callback
         add_action('init', array($this, 'handle_oauth_callback'));
@@ -89,7 +90,7 @@ class UserSpice_OAuth_Client {
 
     public function render_settings_page() {
         //get current full url
-        $url = "http://$_SERVER[HTTP_HOST]";
+        $url = "https://$_SERVER[HTTP_HOST]";
         $url = $url . "/wp-login.php";
         ?>
         <div class="wrap">
@@ -127,7 +128,119 @@ class UserSpice_OAuth_Client {
         echo "<input type='text' name='userspice_oauth_settings[$field]' value='$value' class='regular-text'>";
     }
 
+    public function add_oauth_positioning_script() {
+        ?>
+        <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var oauthSection = document.querySelector('.userspice-oauth-section');
+            var usernameField = document.querySelector('#user_login');
+            
+            if (oauthSection && usernameField) {
+                // Find the username field's parent container
+                var usernameContainer = usernameField.closest('p') || usernameField.parentNode;
+                
+                // Insert the OAuth section before the username field container
+                usernameContainer.parentNode.insertBefore(oauthSection, usernameContainer);
+            }
+        });
+        </script>
+        <?php
+    }
 
+    public function add_oauth_section() {
+        $auth_url = $this->get_authorization_url();
+        $button_label = isset($this->options['button_label']) ? $this->options['button_label'] : 'Login with UserSpice';
+        
+        ?>
+        <style>
+            .userspice-oauth-section {
+                background: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+                padding: 20px;
+                margin-bottom: 20px;
+                text-align: center;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            }
+            
+            .userspice-oauth-section h4 {
+                margin-top: 0;
+                margin-bottom: 12px;
+                color: #495057;
+                font-size: 16px;
+                font-weight: 600;
+            }
+            
+            .userspice-oauth-button {
+                background: linear-gradient(135deg, #007cba 0%, #005a87 100%) !important;
+                border: none !important;
+                color: white !important;
+                padding: 12px 20px !important;
+                font-size: 14px !important;
+                font-weight: 600 !important;
+                text-decoration: none !important;
+                border-radius: 4px !important;
+                display: inline-block !important;
+                transition: all 0.3s ease !important;
+                box-shadow: 0 2px 8px rgba(0, 124, 186, 0.3) !important;
+                text-transform: none !important;
+                letter-spacing: 0.3px !important;
+                width: 100% !important;
+                box-sizing: border-box !important;
+                position: relative !important;
+                z-index: 100 !important;
+            }
+            
+            .userspice-oauth-button:hover {
+                background: linear-gradient(135deg, #005a87 0%, #004066 100%) !important;
+                transform: translateY(-1px) !important;
+                box-shadow: 0 4px 12px rgba(0, 124, 186, 0.4) !important;
+                text-decoration: none !important;
+                color: white !important;
+            }
+            
+            .userspice-oauth-button:active {
+                transform: translateY(0) !important;
+                box-shadow: 0 2px 6px rgba(0, 124, 186, 0.3) !important;
+            }
+            
+            .oauth-divider {
+                display: flex;
+                align-items: center;
+                margin: 20px 0 0 0;
+                color: #666;
+                font-size: 12px;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }
+            
+            .oauth-divider::before,
+            .oauth-divider::after {
+                content: '';
+                flex: 1;
+                height: 1px;
+                background: #ddd;
+            }
+            
+            .oauth-divider span {
+                padding: 0 12px;
+                background: #f8f9fa;
+                position: relative;
+                z-index: 1;
+            }
+        </style>
+        
+        <div class="userspice-oauth-section">
+            <h4>Login</h4>
+            <a href="<?php echo esc_url($auth_url); ?>" class="userspice-oauth-button">
+                <?php echo esc_html($button_label); ?>
+            </a>
+            <div class="oauth-divider">
+                <span>Or login with WordPress</span>
+            </div>
+        </div>
+        <?php
+    }
 
     private function get_authorization_url() {
         $state = bin2hex(random_bytes(16));
@@ -143,6 +256,7 @@ class UserSpice_OAuth_Client {
 
         return $this->options['server_url'] . 'users/auth/?' . http_build_query($params);
     }
+    
     public function handle_oauth_callback() {
         if (isset($_GET['code']) && isset($_GET['state'])) {
             if ($_GET['state'] !== $_SESSION['oauth_state']) {
@@ -206,6 +320,7 @@ class UserSpice_OAuth_Client {
         wp_redirect(home_url());
         exit;
     }
+    
     private function exchange_code_for_token($code) {
         $token_url = $this->options['server_url'] . 'users/auth/';
 
@@ -226,15 +341,6 @@ class UserSpice_OAuth_Client {
         $body = wp_remote_retrieve_body($response);
         return json_decode($body, true);
     }
-
-    public function add_login_button() {
-        $auth_url = $this->get_authorization_url();
-        $button_label = isset($this->options['button_label']) ? $this->options['button_label'] : 'Login with UserSpice';
-        echo "<div style='text-align: center; margin-bottom: .7rem;'>";
-        echo "<a href='$auth_url' class='button button-secondary' style='width: 100%;'>$button_label</a>";
-        echo "</div>";
-    }
-
 }
 
 new UserSpice_OAuth_Client();
