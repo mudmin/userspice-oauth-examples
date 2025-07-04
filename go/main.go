@@ -42,7 +42,7 @@ func oauthRequest(w http.ResponseWriter, r *http.Request) {
     authParams.Set("state", state)
     authParams.Set("scope", "profile")
 
-    authURL := oauthSettings["server_url"] + "usersc/plugins/oauth_server/auth.php?" + authParams.Encode()
+    authURL := oauthSettings["server_url"] + "users/auth/?" + authParams.Encode()
     http.Redirect(w, r, authURL, http.StatusFound)
 }
 
@@ -87,7 +87,7 @@ func oauthResponse(w http.ResponseWriter, r *http.Request) {
 }
 
 func exchangeCodeForToken(authCode string) (map[string]interface{}, error) {
-    tokenUrl := oauthSettings["server_url"] + "usersc/plugins/oauth_server/auth.php"
+    tokenUrl := oauthSettings["server_url"] + "users/auth/"
     data := url.Values{}
     data.Set("grant_type", "authorization_code")
     data.Set("code", authCode)

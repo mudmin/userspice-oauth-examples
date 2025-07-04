@@ -27,7 +27,7 @@ get '/oauth_request' do
     scope: 'profile'
   }
 
-  auth_url = "#{OAUTH_SETTINGS[:server_url]}usersc/plugins/oauth_server/auth.php?#{URI.encode_www_form(auth_params)}"
+  auth_url = "#{OAUTH_SETTINGS[:server_url]}users/auth/?#{URI.encode_www_form(auth_params)}"
   redirect auth_url
 end
 
@@ -57,7 +57,7 @@ get '/oauth_response' do
 end
 
 def exchange_code_for_token(auth_code)
-  token_url = "#{OAUTH_SETTINGS[:server_url]}usersc/plugins/oauth_server/auth.php"
+  token_url = "#{OAUTH_SETTINGS[:server_url]}users/auth/"
   response = HTTParty.post(token_url, 
     body: {
       grant_type: 'authorization_code',

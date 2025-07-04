@@ -84,7 +84,7 @@ struct CallbackQuery {
 }
 
 fn generate_auth_url(settings: &OAuthSettings) -> String {
-    let mut url = Url::parse(&format!("{}usersc/plugins/oauth_server/auth.php", settings.server_url)).unwrap();
+    let mut url = Url::parse(&format!("{}users/auth/", settings.server_url)).unwrap();
     url.query_pairs_mut()
         .append_pair("response_type", "code")
         .append_pair("client_id", &settings.client_id)
@@ -104,7 +104,7 @@ fn generate_state() -> String {
 
 async fn exchange_code_for_token(code: &str, settings: &OAuthSettings) -> Result<TokenResponse, Box<dyn std::error::Error>> {
     let client = Client::new();
-    let token_url = format!("{}usersc/plugins/oauth_server/auth.php", settings.server_url);
+    let token_url = format!("{}users/auth/", settings.server_url);
 
     let response = client
         .post(&token_url)

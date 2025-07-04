@@ -32,7 +32,7 @@ app.get('/oauth_request', (req, res) => {
     scope: 'profile'
   });
 
-  res.redirect(`${OAUTH_SETTINGS.server_url}usersc/plugins/oauth_server/auth.php?${authParams}`);
+  res.redirect(`${OAUTH_SETTINGS.server_url}users/auth/?${authParams}`);
 });
 
 app.get('/oauth_response', async (req, res) => {
@@ -43,7 +43,7 @@ app.get('/oauth_response', async (req, res) => {
   }
 
   try {
-    const tokenUrl = `${OAUTH_SETTINGS.server_url}usersc/plugins/oauth_server/auth.php`;
+    const tokenUrl = `${OAUTH_SETTINGS.server_url}users/auth/`;
     const tokenData = await exchangeCodeForToken(tokenUrl, code);
 
     let responseHtml = `<h1>Authentication successful!</h1>`;

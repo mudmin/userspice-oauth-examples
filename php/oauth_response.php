@@ -13,7 +13,7 @@ if ($state !== $_SESSION['oauth_state']) {
 }
 
 // Exchange the authorization code for an access token
-$tokenUrl = $oSettings['server_url'] . 'usersc/plugins/oauth_server/auth.php';
+$tokenUrl = $oSettings['server_url'] . 'users/auth/';
 $tokenData = exchangeCodeForToken($tokenUrl, $oSettings['client_id'], $oSettings['client_secret'], $authCode, $oSettings['redirect_uri']);
 
 if (isset($tokenData['error'])) {

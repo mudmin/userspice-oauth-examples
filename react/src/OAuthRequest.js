@@ -19,7 +19,7 @@ function OAuthRequest() {
       scope: 'profile'
     });
 
-    const authUrl = `${OAUTH_SETTINGS.server_url}usersc/plugins/oauth_server/auth.php?${authParams}`;
+    const authUrl = `${OAUTH_SETTINGS.server_url}users/auth/?${authParams}`;
     window.location.href = authUrl;
   }, []);
 

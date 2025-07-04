@@ -3,7 +3,7 @@
 require_once 'oauth_config.php';
 
 // OAuth server authorization endpoint
-$authEndpoint = $oSettings['server_url'] . 'usersc/plugins/oauth_server/auth.php';
+$authEndpoint = $oSettings['server_url'] . 'users/auth/';
 
 // Generate a random state parameter for CSRF protection
 try {

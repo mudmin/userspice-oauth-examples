@@ -15,7 +15,7 @@ app.secret_key = secrets.token_hex(16)  # Set a secret key for session managemen
 @app.route('/oauth_request')
 def oauth_request():
     # OAuth server authorization endpoint
-    auth_endpoint = OAUTH_SETTINGS['server_url'] + 'usersc/plugins/oauth_server/auth.php'
+    auth_endpoint = OAUTH_SETTINGS['server_url'] + 'users/auth/'
 
     # Generate a random state parameter for CSRF protection
     state = secrets.token_hex(16)
@@ -48,7 +48,7 @@ def oauth_response():
         return 'Invalid state parameter', 400
 
     # Exchange the authorization code for an access token
-    token_url = OAUTH_SETTINGS['server_url'] + 'usersc/plugins/oauth_server/auth.php'
+    token_url = OAUTH_SETTINGS['server_url'] + 'users/auth/'
     token_data = exchange_code_for_token(token_url, OAUTH_SETTINGS['client_id'],
                                          OAUTH_SETTINGS['client_secret'], auth_code,
                                          OAUTH_SETTINGS['redirect_uri'])

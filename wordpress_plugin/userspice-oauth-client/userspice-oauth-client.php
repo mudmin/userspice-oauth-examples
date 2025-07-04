@@ -3,7 +3,7 @@
  * Plugin Name: UserSpice OAuth Client
  * Plugin URI: https://github.com/mudmin/wordpress-userspice-oauth-client
  * Description: OAuth2 client for UserSpice integration with WordPress
- * Version: 1.0
+ * Version: 1.1
  * Author: Dan Hoover
  * Author URI: https://userspice.com
  */
@@ -141,7 +141,7 @@ class UserSpice_OAuth_Client {
             'scope' => 'profile'
         );
 
-        return $this->options['server_url'] . 'usersc/plugins/oauth_server/auth.php?' . http_build_query($params);
+        return $this->options['server_url'] . 'users/auth/?' . http_build_query($params);
     }
     public function handle_oauth_callback() {
         if (isset($_GET['code']) && isset($_GET['state'])) {
@@ -207,7 +207,7 @@ class UserSpice_OAuth_Client {
         exit;
     }
     private function exchange_code_for_token($code) {
-        $token_url = $this->options['server_url'] . 'usersc/plugins/oauth_server/auth.php';
+        $token_url = $this->options['server_url'] . 'users/auth/';
 
         $response = wp_remote_post($token_url, array(
             'body' => array(
