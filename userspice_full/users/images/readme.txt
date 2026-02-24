@@ -1,0 +1,1 @@
+These can be overridden in usersc/images/social_logins

@@ -1,46 +1,179 @@
-Put these files in the root of your web server.
+UserSpice OAuth Client - PHP Example
+=====================================
 
-Update the oauth_config.php file and access oauth_request.php from your browser.  
+This is a vanilla PHP implementation of an OAuth 2.0 client for UserSpice.
+No external libraries required - just PHP with the cURL extension.
 
-Your output should be similar to the following:
+Requirements
+------------
+- PHP 7.0+ (for random_bytes())
+- PHP cURL extension enabled
+- Session support enabled
 
-Authentication successful!
-Access Token: 08ab68be69608e69c9e99197af2ceae55273be48254d94a267f5b31d6c5b290f
-Expires In: 3600 seconds
+Files
+-----
+- oauth_config.php   - Configuration settings (edit this first!)
+- oauth_request.php  - Initiates the OAuth flow (start here)
+- oauth_response.php - Handles the callback and token exchange
 
-var_dump of token data:
-array(3) { ["access_token"]=> string(64) "08ab68be69608e69c9e99197af2ceae55273be48254d94a267f5b31d6c5b290f" ["token_type"]=> string(6) "Bearer" ["expires_in"]=> int(3600) }
-var_dump of response:
-array(3) {
-  ["userdata"]=>
-  array(6) {
-    ["fname"]=>
-    string(6) "System"
-    ["lname"]=>
-    string(13) "Administrator"
-    ["email"]=>
-    string(26) "admin@yourdomain.com"
-    ["language"]=>
-    string(5) "en-US"
-    ["created"]=>
-    string(19) "0000-00-00 00:00:00"
-    ["email_verified"]=>
-    int(1)
-  }
-  ["tags"]=>
-  array(0) {
-  }
-  ["instructions"]=>
-  array(4) {
-    ["updateUserData"]=>
-    bool(true)
-    ["updateTags"]=>
-    bool(true)
-    ["createTagIfNeeded"]=>
-    bool(true)
-    ["removeTagIfNotSpecified"]=>
-    bool(true)
-  }
+Setup Instructions
+------------------
+1. Copy these files to your web server
+
+2. Edit oauth_config.php with your settings:
+   - server_url:      Your UserSpice OAuth server URL (with trailing slash)
+   - client_id:       From UserSpice admin panel > OAuth Server > Clients
+   - client_secret:   From UserSpice admin panel (keep this secure!)
+   - redirect_uri:    Must EXACTLY match what's registered in UserSpice
+   - scope:           Usually 'profile' for user information
+   - response_secret: (Optional) HMAC secret for verifying response signatures
+
+3. Register your client in UserSpice:
+   - Log into your UserSpice admin panel
+   - Go to OAuth Server settings
+   - Add a new OAuth client
+   - Set the redirect_uri to: https://your-domain.com/oauth_response.php
+
+4. Test the flow by visiting oauth_request.php in your browser
+
+OAuth Flow
+----------
+1. User visits oauth_request.php
+2. Script generates CSRF state token, stores in session
+3. User redirected to UserSpice /users/auth/ for login
+4. User authenticates and authorizes your application
+5. UserSpice redirects to oauth_response.php with ?code=xxx&state=xxx
+6. Script verifies state token (CSRF protection)
+7. Script exchanges code for access token (POST to /users/auth/)
+8. Script fetches user info (GET to /users/auth/userinfo with Bearer token)
+9. Your application can now create/login the user
+
+OAuth Endpoints
+---------------
+Authorization: {server_url}users/auth/
+Token:         {server_url}users/auth/  (POST with grant_type=authorization_code)
+UserInfo:      {server_url}users/auth/userinfo  (GET with Bearer token)
+
+Expected Successful Output
+--------------------------
+After completing the OAuth flow, oauth_response.php displays:
+
+- Access Token: 64-character hex string
+- Token Type: Bearer
+- Expires In: 3600 seconds (1 hour)
+
+User Info from /userinfo endpoint:
+{
+    "sub": "1",
+    "name": "System Administrator",
+    "email": "admin@yourdomain.com"
 }
 
-Your login function here. You can now use the access token to make authenticated requests.
+Response Data (UserSpice specific, via GET parameter):
+{
+    "userdata": {
+        "fname": "System",
+        "lname": "Administrator",
+        "email": "admin@yourdomain.com",
+        "language": "en-US",
+        "created": "2024-01-01 00:00:00",
+        "email_verified": 1
+    },
+    "tags": [],
+    "instructions": {
+        "updateUserData": true,
+        "updateTags": true,
+        "createTagIfNeeded": true,
+        "removeTagIfNotSpecified": true
+    }
+}
+
+Production Integration
+----------------------
+In a real application, after receiving the user data, you would:
+
+1. Check if user exists in your database (by email or sub/user_id)
+2. Create a new user record if they don't exist
+3. Update user data if sync instructions say to
+4. Create a local session to log the user in
+5. Optionally store the access token for future API calls
+
+Example integration code:
+
+    // After successful OAuth in oauth_response.php
+    $email = $userInfo['email'];
+    $userId = $userInfo['sub'];
+
+    // Check if user exists
+    $stmt = $pdo->prepare("SELECT * FROM users WHERE oauth_id = ? OR email = ?");
+    $stmt->execute([$userId, $email]);
+    $localUser = $stmt->fetch();
+
+    if (!$localUser) {
+        // Create new user
+        $stmt = $pdo->prepare("INSERT INTO users (oauth_id, email, name) VALUES (?, ?, ?)");
+        $stmt->execute([$userId, $email, $userInfo['name']]);
+        $localUserId = $pdo->lastInsertId();
+    } else {
+        $localUserId = $localUser['id'];
+    }
+
+    // Log user in
+    $_SESSION['user_id'] = $localUserId;
+    header('Location: /dashboard.php');
+
+Troubleshooting
+---------------
+"Invalid state parameter"
+  - Session may have expired. Try starting the flow again.
+  - Make sure sessions are working on your server.
+
+"Invalid redirect_uri"
+  - The redirect_uri in oauth_config.php must EXACTLY match
+    what's registered in the UserSpice OAuth server.
+  - Check for trailing slashes, http vs https, etc.
+
+"Invalid client"
+  - Verify client_id and client_secret are correct
+  - Make sure the client is enabled in UserSpice admin
+
+"cURL error"
+  - Check that your server can reach the OAuth server
+  - Verify HTTPS certificates if using SSL
+
+HMAC Response Signature Verification
+-------------------------------------
+UserSpice can sign the response data with HMAC-SHA256 to prevent tampering.
+This is optional but recommended for production environments.
+
+How it works:
+1. Configure a 'response_secret' for your OAuth client in UserSpice admin
+2. Set the same secret in oauth_config.php as 'response_secret'
+3. When users authenticate, the server signs the response JSON with HMAC-SHA256
+4. The client verifies the signature before trusting the response data
+
+The signature is passed as a &signature= parameter in the callback URL.
+
+Verification behavior:
+- If response_secret is set and signature is valid: Response is trusted
+- If response_secret is set but signature is missing/invalid: Request is REJECTED
+- If response_secret is empty but signature is provided: Warning shown, continues
+- If neither is set: No signature verification (less secure)
+
+Example configuration:
+    'response_secret' => 'your-shared-secret-here',
+
+The secret should be:
+- At least 32 characters long
+- Randomly generated (use: bin2hex(random_bytes(32)))
+- Kept secure and never exposed publicly
+- The same on both server and client
+
+Security Notes
+--------------
+- Never commit oauth_config.php with real credentials to version control
+- Always use HTTPS in production
+- The state parameter prevents CSRF attacks - don't skip this check
+- Access tokens expire after 1 hour by default
+- Client secrets should be kept secure and never exposed to browsers
+- Use response_secret to verify response data hasn't been tampered with

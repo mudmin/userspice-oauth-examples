@@ -1,40 +1,197 @@
-Make sure nodejs and npm are installed. https://nodejs.org/en/download/
+UserSpice OAuth Client - React Example
+======================================
 
-npx create-react-app react-oauth-client
-cd react-oauth-client
-npm install axios react-router-dom
+This is a React implementation of an OAuth 2.0 client for UserSpice.
 
-//be sure to back up your src/App.js file before replacing it.  This is only a demo. 
+IMPORTANT SECURITY NOTICE
+-------------------------
+This is a FRONTEND-ONLY demo application. In production environments:
+- NEVER expose client_secret in frontend JavaScript code
+- Token exchange should happen on a backend server
+- HMAC signature verification should happen on a backend server
+- Consider using a BFF (Backend for Frontend) pattern
 
-copy the examples/react/src folder to the react-oauth-client directory /src directory
+This example is for demonstration and learning purposes only!
 
-Edit the OAuthRequest.js and OAuthResponse.js files in there with your own configuration
-Update the server to hit the react endpoint and port of http://localhost:3000/oauth_response
+Requirements
+------------
+- Node.js 14+ and npm
+- A UserSpice installation with OAuth Server plugin
 
-run npm start
+Files
+-----
+- src/oauthConfig.js   - Configuration settings (edit this first!)
+- src/App.js           - Main app with routing
+- src/App.css          - Styling for the OAuth demo
+- src/OAuthRequest.js  - Initiates OAuth flow with CSRF protection
+- src/OAuthResponse.js - Handles callback, token exchange, and userinfo
 
-Open a web browser and navigate to http://localhost:3000/oauth_request to see your React app. Click on "Start OAuth Flow" to initiate the OAuth process.
+Setup Instructions
+------------------
+1. Install Node.js from https://nodejs.org/en/download/
+   Verify with: node --version && npm --version
 
-If everything works as expected, you should see output like:
-Authentication successful!
-Access Token (Code): a16e0cbc6300b16d941fbfc4dedc0032
+2. Create a new React project:
+   npx create-react-app react-oauth-client
+   cd react-oauth-client
 
-User Data:
+3. Install dependencies:
+   npm install react-router-dom
+
+   Note: axios is no longer required as we use the Fetch API
+
+4. Copy all files from examples/react/src/ to your project's src/ directory
+   (backup your existing src/App.js first if needed)
+
+5. Edit src/oauthConfig.js with your settings:
+   - serverUrl:       Your UserSpice OAuth server URL (with trailing slash)
+   - clientId:        From UserSpice admin panel > OAuth Server > Clients
+   - clientSecret:    From UserSpice admin panel (keep this secure!)
+   - redirectUri:     Must EXACTLY match what's registered in UserSpice
+   - scope:           Usually "profile" for user information
+   - responseSecret:  (Optional) HMAC secret for verifying response signatures
+
+6. Register your client in UserSpice:
+   - Log into your UserSpice admin panel
+   - Go to OAuth Server settings
+   - Add a new OAuth client
+   - Set the redirect_uri to: http://localhost:3000/oauth_response
+
+7. Run the development server:
+   npm start
+
+8. Visit http://localhost:3000/ in your browser
+
+OAuth Flow
+----------
+1. User visits / (home page) and clicks "Login with UserSpice OAuth"
+2. OAuthRequest component generates cryptographically secure state token
+3. State is stored in localStorage with timestamp
+4. User is redirected to UserSpice /users/auth/ for login
+5. User authenticates and authorizes your application
+6. UserSpice redirects to /oauth_response with ?code=xxx&state=xxx
+7. OAuthResponse verifies state token (CSRF protection)
+8. OAuthResponse verifies HMAC signature (if configured)
+9. OAuthResponse exchanges code for access token
+10. OAuthResponse fetches user info from /userinfo endpoint
+11. Your application can now create/login the user
+
+OAuth Endpoints
+---------------
+Authorization: {serverUrl}users/auth/
+Token:         {serverUrl}users/auth/  (POST with grant_type=authorization_code)
+UserInfo:      {serverUrl}users/auth/userinfo  (GET with Bearer token)
+
+Expected Successful Output
+--------------------------
+After completing the OAuth flow, you should see:
+
+Access Token: 64-character hex string
+Token Type: Bearer
+Expires In: 3600 seconds (1 hour)
+
+User Info from /userinfo endpoint:
 {
-  "fname": "System",
-  "lname": "Administrator",
-  "email": "admin@yourdomain.com",
-  "language": "en-US",
-  "created": "0000-00-00 00:00:00",
-  "email_verified": 1
+    "sub": "1",
+    "name": "System Administrator",
+    "email": "admin@yourdomain.com"
 }
-Tags:
-[]
-Instructions:
+
+User Data from response parameter:
 {
-  "updateUserData": true,
-  "updateTags": true,
-  "createTagIfNeeded": true,
-  "removeTagIfNotSpecified": true
+    "fname": "System",
+    "lname": "Administrator",
+    "email": "admin@yourdomain.com",
+    "language": "en-US",
+    "created": "2024-01-01 00:00:00",
+    "email_verified": 1
 }
-Your login function here. You can now use the access token to make authenticated requests.
+
+Tags: []
+
+Sync Instructions:
+{
+    "updateUserData": true,
+    "updateTags": true,
+    "createTagIfNeeded": true,
+    "removeTagIfNotSpecified": true
+}
+
+Troubleshooting
+---------------
+"Invalid state parameter"
+  - State may have expired (10 minute timeout). Try starting the flow again.
+  - Make sure localStorage is enabled in your browser.
+  - Private/incognito mode may cause issues with localStorage.
+
+"Invalid redirect_uri"
+  - The redirectUri in oauthConfig.js must EXACTLY match
+    what's registered in the UserSpice OAuth server.
+  - Check for trailing slashes, http vs https, etc.
+
+"Invalid client"
+  - Verify clientId and clientSecret are correct
+  - Make sure the client is enabled in UserSpice admin
+
+"CORS errors"
+  - The OAuth server must allow requests from your React app's origin
+  - In production, use a backend server for token exchange
+
+"Token exchange failed"
+  - Check browser console for detailed error messages
+  - Verify client credentials are correct
+
+HMAC Response Signature Verification
+-------------------------------------
+UserSpice can sign the response data with HMAC-SHA256 to prevent tampering.
+This is optional but recommended for production environments.
+
+WARNING: In this frontend demo, the responseSecret is exposed in the
+JavaScript bundle. In production, signature verification should happen
+on a backend server.
+
+How it works:
+1. Configure a 'response_secret' for your OAuth client in UserSpice admin
+2. Set the same secret in oauthConfig.js as 'responseSecret'
+3. When users authenticate, the server signs the response JSON with HMAC-SHA256
+4. The client verifies the signature using Web Crypto API
+
+The signature is passed as a &signature= parameter in the callback URL.
+
+Verification behavior:
+- If responseSecret is set and signature is valid: Response is trusted
+- If responseSecret is set but signature is missing/invalid: Request is REJECTED
+- If responseSecret is empty but signature is provided: Warning shown, continues
+- If neither is set: No signature verification (less secure)
+
+Production Recommendations
+--------------------------
+For a production implementation, you should:
+
+1. Create a backend API (Node.js, Python, Go, etc.) to handle:
+   - Token exchange (POST to /users/auth/)
+   - HMAC signature verification
+   - Storing tokens securely
+   - User session management
+
+2. Use environment variables for configuration (not hard-coded values)
+
+3. Implement proper error handling and logging
+
+4. Use HTTPS everywhere
+
+5. Consider implementing:
+   - Token refresh logic
+   - Logout functionality
+   - Session timeout handling
+
+Security Notes
+--------------
+- This demo exposes client_secret in the browser - NEVER do this in production
+- Always use HTTPS in production
+- Use crypto.getRandomValues() for state generation (not Math.random())
+- State tokens expire after 10 minutes for security
+- The state parameter prevents CSRF attacks - don't skip this check
+- Access tokens expire after 1 hour by default
+- Use responseSecret to verify response data hasn't been tampered with
+- Consider using httpOnly cookies for token storage in production

@@ -1,5 +1,208 @@
-Copy the userspice-oauth-client folder to the wp-content/plugins folder of your WordPress installation.
-Activate the plugin in the WordPress admin panel.
-There is a settings button in the plugin manager underneath the name, or you can visit settings on the left side of the page.  
+UserSpice OAuth Client - WordPress Plugin
+=========================================
 
-Enter your information as described in the plugin
+This is a WordPress plugin that implements OAuth 2.0 client functionality
+for UserSpice authentication.
+
+Requirements
+------------
+- WordPress 5.0+
+- PHP 7.4+
+- A UserSpice installation with OAuth Server plugin
+
+Files
+-----
+- userspice-oauth-client/userspice-oauth-client.php  - Main plugin file
+
+Installation
+------------
+1. Copy the userspice-oauth-client folder to your WordPress installation:
+   wp-content/plugins/userspice-oauth-client/
+
+2. Log into your WordPress admin panel
+
+3. Go to Plugins and activate "UserSpice OAuth Client"
+
+4. Configure the plugin:
+   - Click "Settings" under the plugin name, OR
+   - Go to Settings > UserSpice OAuth
+
+Configuration Settings
+----------------------
+Server URL:
+  The full base URL of your UserSpice OAuth server including trailing slash.
+  Example: https://your-userspice-domain.com/
+
+Client ID:
+  The OAuth client ID from your UserSpice admin panel.
+  (OAuth Server > Clients > Your Client > Client ID)
+
+Client Secret:
+  The OAuth client secret from UserSpice.
+  Keep this secure - never share it publicly!
+
+Redirect URI:
+  The WordPress login page URL. This must EXACTLY match what's
+  registered in the UserSpice OAuth server.
+  Usually: https://your-wordpress-site.com/wp-login.php
+
+Response Secret (HMAC):
+  Optional but recommended for security.
+  If set, the OAuth server signs response data with HMAC-SHA256.
+  This must match 'response_secret' in your UserSpice OAuth client settings.
+
+Login Button Label:
+  Customize the OAuth login button text.
+  Default: "Login with UserSpice"
+
+Registering Your Client in UserSpice
+------------------------------------
+1. Log into your UserSpice admin panel
+2. Go to OAuth Server settings
+3. Add a new OAuth client
+4. Set the redirect_uri to your WordPress login URL:
+   https://your-wordpress-site.com/wp-login.php
+5. Copy the client_id and client_secret to WordPress settings
+6. Optionally set a response_secret for HMAC verification
+
+OAuth Flow
+----------
+1. User visits the WordPress login page (/wp-login.php)
+2. OAuth login button appears above the standard WordPress login form
+3. User clicks "Login with UserSpice"
+4. Plugin generates a cryptographically secure state token (CSRF protection)
+5. User is redirected to UserSpice /users/auth/ for authentication
+6. User logs in and authorizes the application
+7. UserSpice redirects back to WordPress with authorization code
+8. Plugin verifies the state parameter (prevents CSRF attacks)
+9. Plugin verifies HMAC signature (if configured)
+10. Plugin exchanges code for access token (POST to /users/auth/)
+11. Plugin fetches user info from /users/auth/userinfo
+12. WordPress user is created (if new) or updated (if existing)
+13. User is logged in and redirected to the dashboard/home
+
+OAuth Endpoints
+---------------
+Authorization: {server_url}users/auth/
+Token:         {server_url}users/auth/  (POST with grant_type=authorization_code)
+UserInfo:      {server_url}users/auth/userinfo  (GET with Bearer token)
+
+User Data Handling
+------------------
+The plugin retrieves user data from two sources:
+
+1. /userinfo endpoint (primary):
+   - sub (user ID)
+   - name
+   - email
+
+2. Response parameter (UserSpice-specific, fallback):
+   - fname, lname
+   - email
+   - language
+
+When a new user is created:
+- Username: email address
+- Password: randomly generated (user must use OAuth to login)
+- First/Last name: from UserSpice data
+- Display name: "First Last"
+- User meta: userspice_user_id, userspice_language
+
+When an existing user logs in:
+- User metadata is updated with latest UserSpice data
+- User is logged in with a persistent cookie
+
+HMAC Response Signature Verification
+-------------------------------------
+UserSpice can sign the response data with HMAC-SHA256 to prevent tampering.
+This is optional but recommended for production environments.
+
+How it works:
+1. Configure a 'response_secret' for your OAuth client in UserSpice admin
+2. Set the same secret in WordPress plugin settings
+3. When users authenticate, the server signs the response JSON with HMAC-SHA256
+4. The plugin verifies the signature using hash_equals() (timing-safe)
+
+The signature is passed as a &signature= parameter in the callback URL.
+
+Verification behavior:
+- If response_secret is set and signature is valid: Response is trusted
+- If response_secret is set but signature is missing: Request is REJECTED
+- If response_secret is set but signature is invalid: Request is REJECTED
+- If response_secret is empty: No signature verification (less secure)
+
+Expected Successful Behavior
+----------------------------
+After successful OAuth authentication:
+
+1. New users are created automatically in WordPress
+2. Existing users (matched by email) are logged in
+3. User is redirected to:
+   - Admin dashboard (if user is an administrator)
+   - Home page (for regular users)
+
+Troubleshooting
+---------------
+"Invalid state parameter"
+  - Session may have expired. Try starting the flow again.
+  - Make sure PHP sessions are working correctly.
+  - Check that no caching plugins are caching the login page.
+
+"OAuth state expired"
+  - The state token is valid for 10 minutes.
+  - Start the OAuth flow again.
+
+"Invalid redirect_uri"
+  - The Redirect URI in WordPress settings must EXACTLY match
+    what's registered in the UserSpice OAuth server.
+  - Check for trailing slashes, http vs https, etc.
+
+"Invalid client"
+  - Verify Client ID and Client Secret are correct.
+  - Make sure the client is enabled in UserSpice admin.
+
+"Response signature required"
+  - You have set a response_secret in WordPress but the OAuth
+    server is not providing a signature.
+  - Configure 'response_secret' for your client in UserSpice.
+
+"Invalid response signature"
+  - The response_secret in WordPress doesn't match UserSpice.
+  - Data may have been tampered with in transit.
+  - Verify both secrets are identical.
+
+"No email address received"
+  - The OAuth server didn't return an email.
+  - Check UserSpice user profile has an email set.
+  - Verify the 'profile' scope is configured correctly.
+
+Security Notes
+--------------
+- Always use HTTPS in production
+- Keep client_secret secure - never expose in frontend code
+- Use a strong response_secret (32+ characters, random)
+- The state parameter prevents CSRF attacks - never disable this
+- Access tokens expire after 1 hour by default
+- User passwords are randomly generated - OAuth is required for login
+- Settings are sanitized using WordPress functions
+- All user input is escaped/sanitized before use
+
+Plugin Hooks
+------------
+The plugin fires the standard WordPress 'wp_login' action after
+successful authentication, so other plugins can hook into the login.
+
+Changelog
+---------
+Version 2.0:
+- Added HMAC signature verification (response_secret)
+- Added /userinfo endpoint fetching
+- Added state token expiration (10 minutes)
+- Improved input sanitization
+- Added password field types for secrets
+- Improved settings page with documentation
+- Better error handling with specific messages
+- Store UserSpice user ID in user meta
+
+Version 1.2:
+- Initial public release

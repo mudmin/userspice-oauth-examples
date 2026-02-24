@@ -1,0 +1,17 @@
+<?php
+// This file often teams up with during_user_creation.php although you can use that file without this one.
+// However, if you add additional form fields here, you should process them there.
+// We will do an example. Let's say you want to make use of the unused account_id column in the users table.
+
+// Uncomment out the code below and it will automagically be inserted into your join form.
+?>
+<!-- <div class="row mb-3">
+	<label for="confirm" class="col-12 col-md-4">Pick an account ID number</label>
+	<div class="col-12 col-md-8">
+<input type="number" class="form-control" min="0" step="1" name="account_id" value="" required> 
+	</div>
+	</div>-->
+
+<?php
+//Now, go into the during_user_creation script to see how to process it.
+?>

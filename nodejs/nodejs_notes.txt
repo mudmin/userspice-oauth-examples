@@ -1,41 +1,190 @@
-mkdir nodejs-oauth-client
-cd nodejs-oauth-client
-npm init -y
-npm install express express-session axios
-copy the oauth_app.js file from the examples/nodejs directory to the nodejs-oauth-client directory   
-Make sure your server is configured to hit the nodejs endpoint and port
-run 
-node oauth_app.js
-visit http://localhost:3000/oauth_request in your browser to initiate the OAuth flow
+UserSpice OAuth Client - Node.js Example
+========================================
 
-If everything works as expected, you should see output like:
-Authentication successful!
-Access Token: 244f4d458dc16eea262f28dde8739210bc7b16d9a0684527e8bbf4c5496c5900
+This is a Node.js/Express implementation of an OAuth 2.0 client for UserSpice.
 
-Expires In: 3600 seconds
+Requirements
+------------
+- Node.js 14+
+- npm packages: express, express-session, axios
 
-Detailed token data:
+Files
+-----
+- oauth_config.js  - Configuration settings (edit this first!)
+- oauth_app.js     - OAuth client implementation
+
+Setup Instructions
+------------------
+1. Create a new directory and initialize npm:
+   mkdir nodejs-oauth-client
+   cd nodejs-oauth-client
+   npm init -y
+
+2. Install dependencies:
+   npm install express express-session axios
+
+3. Copy both .js files to your project directory
+
+4. Edit oauth_config.js with your settings:
+   - server_url:      Your UserSpice OAuth server URL (with trailing slash)
+   - client_id:       From UserSpice admin panel > OAuth Server > Clients
+   - client_secret:   From UserSpice admin panel (keep this secure!)
+   - redirect_uri:    Must EXACTLY match what's registered in UserSpice
+   - scope:           Usually "profile" for user information
+   - response_secret: (Optional) HMAC secret for verifying response signatures
+
+5. Register your client in UserSpice:
+   - Log into your UserSpice admin panel
+   - Go to OAuth Server settings
+   - Add a new OAuth client
+   - Set the redirect_uri to: http://localhost:3000/oauth_response
+
+6. Run the application:
+   node oauth_app.js
+
+7. Visit http://localhost:3000/oauth_request in your browser
+
+OAuth Flow
+----------
+1. User visits /oauth_request
+2. Script generates CSRF state token, stores in session
+3. User redirected to UserSpice /users/auth/ for login
+4. User authenticates and authorizes your application
+5. UserSpice redirects to /oauth_response with ?code=xxx&state=xxx
+6. Script verifies state token (CSRF protection)
+7. Script exchanges code for access token (POST to /users/auth/)
+8. Script fetches user info (GET to /users/auth/userinfo with Bearer token)
+9. Your application can now create/login the user
+
+OAuth Endpoints
+---------------
+Authorization: {server_url}users/auth/
+Token:         {server_url}users/auth/  (POST with grant_type=authorization_code)
+UserInfo:      {server_url}users/auth/userinfo  (GET with Bearer token)
+
+Expected Successful Output
+--------------------------
+After completing the OAuth flow, you should see:
+
+- Access Token: 64-character hex string
+- Token Type: Bearer
+- Expires In: 3600 seconds (1 hour)
+
+User Info from /userinfo endpoint:
 {
-  "access_token": "244f4d458dc16eea262f28dde8739210bc7b16d9a0684527e8bbf4c5496c5900",
-  "token_type": "Bearer",
-  "expires_in": 3600
+    "sub": "1",
+    "name": "System Administrator",
+    "email": "admin@yourdomain.com"
 }
-Detailed response data:
+
+Response Data (UserSpice specific, via GET parameter):
 {
-  "userdata": {
-    "fname": "System",
-    "lname": "Administrator",
-    "email": "admin@yourdomain.com",
-    "language": "en-US",
-    "created": "0000-00-00 00:00:00",
-    "email_verified": 1
-  },
-  "tags": [],
-  "instructions": {
-    "updateUserData": true,
-    "updateTags": true,
-    "createTagIfNeeded": true,
-    "removeTagIfNotSpecified": true
-  }
+    "userdata": {
+        "fname": "System",
+        "lname": "Administrator",
+        "email": "admin@yourdomain.com",
+        "language": "en-US",
+        "created": "2024-01-01 00:00:00",
+        "email_verified": 1
+    },
+    "tags": [],
+    "instructions": {
+        "updateUserData": true,
+        "updateTags": true,
+        "createTagIfNeeded": true,
+        "removeTagIfNotSpecified": true
+    }
 }
-Your login function here. You can now use the access token to make authenticated requests.
+
+Production Integration
+----------------------
+In a real application, after receiving the user data, you would:
+
+1. Check if user exists in your database (by email or sub/user_id)
+2. Create a new user record if they don't exist
+3. Update user data if sync instructions say to
+4. Create a local session to log the user in
+5. Optionally store the access token for future API calls
+
+Example integration:
+
+    // After successful OAuth in /oauth_response handler
+    const email = userInfo.email;
+    const userId = userInfo.sub;
+
+    // Check if user exists (using your database of choice)
+    let user = await db.findOne({ where: { oauth_id: userId } });
+    if (!user) {
+        user = await db.findOne({ where: { email: email } });
+    }
+
+    if (!user) {
+        // Create new user
+        user = await db.create({
+            oauth_id: userId,
+            email: email,
+            name: userInfo.name
+        });
+    }
+
+    // Log user in (set session)
+    req.session.user_id = user.id;
+    res.redirect('/dashboard');
+
+Troubleshooting
+---------------
+"Invalid state parameter"
+  - Session may have expired. Try starting the flow again.
+  - Make sure sessions are working on your server.
+
+"Invalid redirect_uri"
+  - The redirect_uri in oauth_config.js must EXACTLY match
+    what's registered in the UserSpice OAuth server.
+  - Check for trailing slashes, http vs https, etc.
+
+"Invalid client"
+  - Verify client_id and client_secret are correct
+  - Make sure the client is enabled in UserSpice admin
+
+"Network error" / "ECONNREFUSED"
+  - Check that your server can reach the OAuth server
+  - Verify HTTPS certificates if using SSL
+
+HMAC Response Signature Verification
+-------------------------------------
+UserSpice can sign the response data with HMAC-SHA256 to prevent tampering.
+This is optional but recommended for production environments.
+
+How it works:
+1. Configure a 'response_secret' for your OAuth client in UserSpice admin
+2. Set the same secret in oauth_config.js as 'response_secret'
+3. When users authenticate, the server signs the response JSON with HMAC-SHA256
+4. The client verifies the signature before trusting the response data
+
+The signature is passed as a &signature= parameter in the callback URL.
+
+Verification behavior:
+- If response_secret is set and signature is valid: Response is trusted
+- If response_secret is set but signature is missing/invalid: Request is REJECTED
+- If response_secret is empty but signature is provided: Warning shown, continues
+- If neither is set: No signature verification (less secure)
+
+Example configuration:
+    response_secret: 'your-shared-secret-here',
+
+The secret should be:
+- At least 32 characters long
+- Randomly generated (use: require('crypto').randomBytes(32).toString('hex'))
+- Kept secure and never exposed publicly
+- The same on both server and client
+
+Security Notes
+--------------
+- Never commit oauth_config.js with real credentials to version control
+- Always use HTTPS in production
+- Set cookie.secure to true in production (with HTTPS)
+- The state parameter prevents CSRF attacks - don't skip this check
+- Access tokens expire after 1 hour by default
+- Client secrets should be kept secure and never exposed to browsers
+- Use response_secret to verify response data hasn't been tampered with
+- Consider using a proper session store (Redis, database) for production

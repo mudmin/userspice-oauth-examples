@@ -1,59 +1,172 @@
-Install rust from https://www.rust-lang.org/tools/install
-If you had your command prompt open before installing rust, close it and reopen it
+UserSpice OAuth Client - Rust Example
+=====================================
 
-mkdir rust-oauth-client
-cd rust-oauth-client
-cargo init
+This is a Rust/Actix-web implementation of an OAuth 2.0 client for UserSpice.
 
-add the following to the [dependencies] section of your Cargo.toml file
+Requirements
+------------
+- Rust 1.70+
+- Cargo
 
-actix-web = "4.3"
-reqwest = { version = "0.11", features = ["json"] }
-tokio = { version = "1", features = ["full"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-url = "2.3"
-dotenv = "0.15"
-rand = "0.8"
+Files
+-----
+- .env           - Configuration settings (edit this first!)
+- src/main.rs    - OAuth client implementation
 
-replace the contents of src/main.rs with the the main.rs from this folder
-copy the .env file to the rust-oauth-client directory
+Setup Instructions
+------------------
+1. Install Rust from https://www.rust-lang.org/tools/install
+   Verify with: rustc --version
 
-configure the .env with your credentials
-Make sure the server is configured with your endpoint and port of http://localhost:8080/oauth_response
+2. Create a new project and initialize:
+   mkdir rust-oauth-client
+   cd rust-oauth-client
+   cargo init
 
+3. Add dependencies to Cargo.toml [dependencies] section:
 
-cargo run
-In your browser, navigate to http://localhost:8080/ to initiate the OAuth flow
+   actix-web = "4"
+   actix-session = { version = "0.9", features = ["cookie-session"] }
+   reqwest = { version = "0.11", features = ["json"] }
+   tokio = { version = "1", features = ["full"] }
+   serde = { version = "1.0", features = ["derive"] }
+   serde_json = "1.0"
+   url = "2"
+   dotenv = "0.15"
+   rand = "0.8"
+   base64 = "0.21"
+   hmac = "0.12"
+   sha2 = "0.10"
+   hex = "0.4"
+   html-escape = "0.2"
 
-If everything works as expected, you should see output like:
+4. Copy src/main.rs to your project's src/ directory
 
-Authentication successful!
-Access Token: a46301bd100abb5a63755b962505fb9f848c3b444feccd9e838347eb54b8e0c7
+5. Copy .env to your project root and edit with your settings:
+   - SERVER_URL:      Your UserSpice OAuth server URL (with trailing slash)
+   - CLIENT_ID:       From UserSpice admin panel > OAuth Server > Clients
+   - CLIENT_SECRET:   From UserSpice admin panel (keep this secure!)
+   - REDIRECT_URI:    Must EXACTLY match what's registered in UserSpice
+   - SCOPE:           Usually "profile" for user information
+   - RESPONSE_SECRET: (Optional) HMAC secret for verifying response signatures
 
-Expires In: 3600 seconds
+6. Register your client in UserSpice:
+   - Log into your UserSpice admin panel
+   - Go to OAuth Server settings
+   - Add a new OAuth client
+   - Set the redirect_uri to: http://localhost:8080/oauth_response
 
-Token Data:
+7. Build and run the application:
+   cargo run
+
+8. Visit http://localhost:8080/ in your browser
+
+OAuth Flow
+----------
+1. User visits / (home page)
+2. User clicks "Login with UserSpice OAuth"
+3. Script generates CSRF state token, stores in session
+4. User redirected to UserSpice /users/auth/ for login
+5. User authenticates and authorizes your application
+6. UserSpice redirects to /oauth_response with ?code=xxx&state=xxx
+7. Script verifies state token (CSRF protection)
+8. Script exchanges code for access token (POST to /users/auth/)
+9. Script fetches user info (GET to /users/auth/userinfo with Bearer token)
+10. Your application can now create/login the user
+
+OAuth Endpoints
+---------------
+Authorization: {SERVER_URL}users/auth/
+Token:         {SERVER_URL}users/auth/  (POST with grant_type=authorization_code)
+UserInfo:      {SERVER_URL}users/auth/userinfo  (GET with Bearer token)
+
+Expected Successful Output
+--------------------------
+After completing the OAuth flow, you should see:
+
+- Access Token: 64-character hex string
+- Token Type: Bearer
+- Expires In: 3600 seconds (1 hour)
+
+User Info from /userinfo endpoint:
 {
-  "access_token": "a46301bd100abb5a63755b962505fb9f848c3b444feccd9e838347eb54b8e0c7",
-  "expires_in": 3600
+    "sub": "1",
+    "name": "System Administrator",
+    "email": "admin@yourdomain.com"
 }
-Response Data:
+
+Response Data (UserSpice specific, via GET parameter):
 {
-  "instructions": {
-    "createTagIfNeeded": true,
-    "removeTagIfNotSpecified": true,
-    "updateTags": true,
-    "updateUserData": true
-  },
-  "tags": [],
-  "userdata": {
-    "created": "0000-00-00 00:00:00",
-    "email": "admin@yourdomain.com",
-    "email_verified": 1,
-    "fname": "System",
-    "language": "en-US",
-    "lname": "Administrator"
-  }
+    "userdata": {
+        "fname": "System",
+        "lname": "Administrator",
+        "email": "admin@yourdomain.com",
+        "language": "en-US",
+        "created": "2024-01-01 00:00:00",
+        "email_verified": 1
+    },
+    "tags": [],
+    "instructions": {
+        "updateUserData": true,
+        "updateTags": true,
+        "createTagIfNeeded": true,
+        "removeTagIfNotSpecified": true
+    }
 }
-Your login function here. You can now use the access token to make authenticated requests.
+
+Troubleshooting
+---------------
+"Invalid state parameter"
+  - Session may have expired. Try starting the flow again.
+  - Make sure cookies are enabled in your browser.
+
+"Invalid redirect_uri"
+  - The REDIRECT_URI in .env must EXACTLY match
+    what's registered in the UserSpice OAuth server.
+  - Check for trailing slashes, http vs https, etc.
+
+"Invalid client"
+  - Verify CLIENT_ID and CLIENT_SECRET are correct
+  - Make sure the client is enabled in UserSpice admin
+
+"Network error"
+  - Check that your server can reach the OAuth server
+  - Verify HTTPS certificates if using SSL
+
+HMAC Response Signature Verification
+-------------------------------------
+UserSpice can sign the response data with HMAC-SHA256 to prevent tampering.
+This is optional but recommended for production environments.
+
+How it works:
+1. Configure a 'response_secret' for your OAuth client in UserSpice admin
+2. Set the same secret in .env as 'RESPONSE_SECRET'
+3. When users authenticate, the server signs the response JSON with HMAC-SHA256
+4. The client verifies the signature before trusting the response data
+
+The signature is passed as a &signature= parameter in the callback URL.
+
+Verification behavior:
+- If RESPONSE_SECRET is set and signature is valid: Response is trusted
+- If RESPONSE_SECRET is set but signature is missing/invalid: Request is REJECTED
+- If RESPONSE_SECRET is empty but signature is provided: Warning shown, continues
+- If neither is set: No signature verification (less secure)
+
+Example configuration in .env:
+    RESPONSE_SECRET=your-shared-secret-here
+
+The secret should be:
+- At least 32 characters long
+- Randomly generated
+- Kept secure and never exposed publicly
+- The same on both server and client
+
+Security Notes
+--------------
+- Never commit .env with real credentials to version control
+- Always use HTTPS in production
+- Set cookie_secure to true in production (with HTTPS)
+- The state parameter prevents CSRF attacks - don't skip this check
+- Access tokens expire after 1 hour by default
+- Client secrets should be kept secure and never exposed to browsers
+- Use RESPONSE_SECRET to verify response data hasn't been tampered with

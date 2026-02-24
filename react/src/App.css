@@ -1,0 +1,266 @@
+/**
+ * UserSpice OAuth Client - React Example
+ * Stylesheet for OAuth demo application
+ */
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    margin: 0;
+    padding: 20px;
+}
+
+.oauth-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: calc(100vh - 40px);
+}
+
+.oauth-card {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    padding: 40px;
+    max-width: 700px;
+    width: 100%;
+    text-align: center;
+}
+
+.oauth-card h1 {
+    color: #2d3748;
+    margin: 0 0 10px 0;
+    font-size: 28px;
+}
+
+.oauth-card h2 {
+    color: #2d3748;
+    margin: 0 0 20px 0;
+    font-size: 22px;
+}
+
+.oauth-card h3 {
+    color: #4a5568;
+    margin: 20px 0 10px 0;
+    font-size: 16px;
+    text-align: left;
+}
+
+.subtitle {
+    color: #718096;
+    margin: 0 0 30px 0;
+    font-size: 16px;
+}
+
+.oauth-button {
+    display: inline-block;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 15px 40px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 16px;
+    transition: all 0.3s ease;
+    border: none;
+    cursor: pointer;
+    margin: 10px 0;
+}
+
+.oauth-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+}
+
+.oauth-button.secondary {
+    background: #e2e8f0;
+    color: #4a5568;
+}
+
+.oauth-button.secondary:hover {
+    background: #cbd5e0;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+}
+
+.warning-box {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 8px;
+    padding: 15px;
+    margin: 20px 0;
+    text-align: left;
+    font-size: 14px;
+    color: #856404;
+}
+
+.info-section {
+    background: #f7fafc;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 30px 0 0 0;
+    text-align: left;
+}
+
+.info-section h3 {
+    margin-top: 0;
+}
+
+.info-section ol {
+    margin: 0;
+    padding-left: 20px;
+    color: #4a5568;
+}
+
+.info-section li {
+    margin: 8px 0;
+}
+
+.data-section {
+    background: #f7fafc;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 20px 0;
+    text-align: left;
+}
+
+.token-display {
+    background: #2d3748;
+    border-radius: 6px;
+    padding: 15px;
+    overflow-x: auto;
+}
+
+.token-display code {
+    color: #68d391;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 14px;
+    word-break: break-all;
+}
+
+.token-info {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 10px;
+    font-size: 14px;
+    color: #718096;
+}
+
+.json-display {
+    background: #2d3748;
+    border-radius: 6px;
+    padding: 15px;
+    overflow-x: auto;
+    color: #e2e8f0;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 13px;
+    text-align: left;
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.signature-badge {
+    display: inline-block;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 600;
+    margin: 20px 0;
+}
+
+.signature-badge.verified {
+    background: #c6f6d5;
+    color: #276749;
+}
+
+.signature-badge.warning {
+    background: #feebc8;
+    color: #c05621;
+}
+
+.next-steps {
+    background: #ebf8ff;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 20px 0;
+    text-align: left;
+}
+
+.next-steps h3 {
+    margin-top: 0;
+    color: #2b6cb0;
+}
+
+.next-steps p {
+    color: #2c5282;
+    margin: 10px 0;
+}
+
+.next-steps ol {
+    margin: 0;
+    padding-left: 20px;
+    color: #2c5282;
+}
+
+.next-steps li {
+    margin: 5px 0;
+}
+
+.error-card {
+    border-left: 4px solid #e53e3e;
+}
+
+.error-message {
+    background: #fed7d7;
+    color: #c53030;
+    padding: 15px;
+    border-radius: 6px;
+    margin: 20px 0;
+    text-align: left;
+}
+
+.success-card {
+    border-left: 4px solid #48bb78;
+}
+
+.loading-spinner {
+    width: 50px;
+    height: 50px;
+    border: 4px solid #e2e8f0;
+    border-top: 4px solid #667eea;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 20px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.hint {
+    color: #a0aec0;
+    font-size: 14px;
+    margin-top: 15px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+    .oauth-card {
+        padding: 25px;
+    }
+
+    .oauth-card h1 {
+        font-size: 22px;
+    }
+
+    .token-info {
+        flex-direction: column;
+        gap: 5px;
+    }
+}

@@ -1,43 +1,182 @@
-Obviously, make sure go is installed. https://golang.org/dl/
-mkdir go-oauth-client
-cd go-oauth-client
-go mod init go-oauth-client
+UserSpice OAuth Client - Go Example
+====================================
 
-copy main.go to go-oauth-client directory
-configure the oauth_config.go with your credentials
-Make sure the server is configured with your endpoint and port of http://yourdomain.com:8080/oauth_response
-run go run main.go
+This is a Go implementation of an OAuth 2.0 client for UserSpice.
+No external dependencies required - uses only the Go standard library.
 
-Open a web browser and navigate to http://localhost:8080/oauth_request to initiate the OAuth flow.
+Requirements
+------------
+- Go 1.16+ (for io.ReadAll; use ioutil.ReadAll for older versions)
 
-If everything works as expected, you should see output like:
-Authentication successful!
-Access Token: 395497c92bcde347c3eebdc961fd2390b8a72fa1a8671c0b3d5dab60cb3e28ce
+Files
+-----
+- oauth_config.go  - Configuration settings (edit this first!)
+- main.go          - OAuth client implementation
 
-Expires In: %!d(float64=3600) seconds
+Setup Instructions
+------------------
+1. Create a new directory and initialize a Go module:
+   mkdir go-oauth-client
+   cd go-oauth-client
+   go mod init go-oauth-client
 
-Detailed token data:
+2. Copy both .go files to your project directory
+
+3. Edit oauth_config.go with your settings:
+   - ServerURL:      Your UserSpice OAuth server URL (with trailing slash)
+   - ClientID:       From UserSpice admin panel > OAuth Server > Clients
+   - ClientSecret:   From UserSpice admin panel (keep this secure!)
+   - RedirectURI:    Must EXACTLY match what's registered in UserSpice
+   - Scope:          Usually "profile" for user information
+   - ResponseSecret: (Optional) HMAC secret for verifying response signatures
+
+4. Register your client in UserSpice:
+   - Log into your UserSpice admin panel
+   - Go to OAuth Server settings
+   - Add a new OAuth client
+   - Set the redirect_uri to: http://localhost:8080/oauth_response
+
+5. Run the application:
+   go run main.go oauth_config.go
+
+6. Visit http://localhost:8080/oauth_request in your browser
+
+OAuth Flow
+----------
+1. User visits /oauth_request
+2. Script generates CSRF state token, stores in memory
+3. User redirected to UserSpice /users/auth/ for login
+4. User authenticates and authorizes your application
+5. UserSpice redirects to /oauth_response with ?code=xxx&state=xxx
+6. Script verifies state token (CSRF protection)
+7. Script exchanges code for access token (POST to /users/auth/)
+8. Script fetches user info (GET to /users/auth/userinfo with Bearer token)
+9. Your application can now create/login the user
+
+OAuth Endpoints
+---------------
+Authorization: {ServerURL}users/auth/
+Token:         {ServerURL}users/auth/  (POST with grant_type=authorization_code)
+UserInfo:      {ServerURL}users/auth/userinfo  (GET with Bearer token)
+
+Expected Successful Output
+--------------------------
+After completing the OAuth flow, you should see:
+
+- Access Token: 64-character hex string
+- Token Type: Bearer
+- Expires In: 3600 seconds (1 hour)
+
+User Info from /userinfo endpoint:
 {
-  "access_token": "395497c92bcde347c3eebdc961fd2390b8a72fa1a8671c0b3d5dab60cb3e28ce",
-  "expires_in": 3600,
-  "token_type": "Bearer"
+    "sub": "1",
+    "name": "System Administrator",
+    "email": "admin@yourdomain.com"
 }
-Detailed response data:
+
+Response Data (UserSpice specific, via GET parameter):
 {
-  "instructions": {
-    "createTagIfNeeded": true,
-    "removeTagIfNotSpecified": true,
-    "updateTags": true,
-    "updateUserData": true
-  },
-  "tags": [],
-  "userdata": {
-    "created": "0000-00-00 00:00:00",
-    "email": "testguy@userspice.com",
-    "email_verified": 1,
-    "fname": "test",
-    "language": "en-US",
-    "lname": "guy"
-  }
+    "userdata": {
+        "fname": "System",
+        "lname": "Administrator",
+        "email": "admin@yourdomain.com",
+        "language": "en-US",
+        "created": "2024-01-01 00:00:00",
+        "email_verified": 1
+    },
+    "tags": [],
+    "instructions": {
+        "updateUserData": true,
+        "updateTags": true,
+        "createTagIfNeeded": true,
+        "removeTagIfNotSpecified": true
+    }
 }
-Your login function here. You can now use the access token to make authenticated requests.
+
+Production Integration
+----------------------
+In a real application, after receiving the user data, you would:
+
+1. Check if user exists in your database (by email or sub/user_id)
+2. Create a new user record if they don't exist
+3. Update user data if sync instructions say to
+4. Create a local session to log the user in
+5. Optionally store the access token for future API calls
+
+Example integration (pseudocode):
+
+    // After successful OAuth in oauthResponse handler
+    email := userInfo["email"].(string)
+    userId := userInfo["sub"].(string)
+
+    // Check if user exists
+    user, err := db.FindUserByOAuthID(userId)
+    if err == sql.ErrNoRows {
+        user, err = db.FindUserByEmail(email)
+    }
+
+    if user == nil {
+        // Create new user
+        user = db.CreateUser(userId, email, userInfo["name"].(string))
+    }
+
+    // Log user in (set session)
+    session.SetUserID(user.ID)
+    http.Redirect(w, r, "/dashboard", http.StatusFound)
+
+Troubleshooting
+---------------
+"Invalid state parameter"
+  - State may have expired from memory. Try starting the flow again.
+  - In production, use a proper session store (Redis, database, etc.)
+
+"Invalid redirect_uri"
+  - The RedirectURI in oauth_config.go must EXACTLY match
+    what's registered in the UserSpice OAuth server.
+  - Check for trailing slashes, http vs https, etc.
+
+"Invalid client"
+  - Verify ClientID and ClientSecret are correct
+  - Make sure the client is enabled in UserSpice admin
+
+"Network error"
+  - Check that your server can reach the OAuth server
+  - Verify HTTPS certificates if using SSL
+
+HMAC Response Signature Verification
+-------------------------------------
+UserSpice can sign the response data with HMAC-SHA256 to prevent tampering.
+This is optional but recommended for production environments.
+
+How it works:
+1. Configure a 'response_secret' for your OAuth client in UserSpice admin
+2. Set the same secret in oauth_config.go as 'ResponseSecret'
+3. When users authenticate, the server signs the response JSON with HMAC-SHA256
+4. The client verifies the signature before trusting the response data
+
+The signature is passed as a &signature= parameter in the callback URL.
+
+Verification behavior:
+- If ResponseSecret is set and signature is valid: Response is trusted
+- If ResponseSecret is set but signature is missing/invalid: Request is REJECTED
+- If ResponseSecret is empty but signature is provided: Warning shown, continues
+- If neither is set: No signature verification (less secure)
+
+Example configuration:
+    ResponseSecret: "your-shared-secret-here",
+
+The secret should be:
+- At least 32 characters long
+- Randomly generated
+- Kept secure and never exposed publicly
+- The same on both server and client
+
+Security Notes
+--------------
+- Never commit oauth_config.go with real credentials to version control
+- Always use HTTPS in production
+- The state parameter prevents CSRF attacks - don't skip this check
+- Access tokens expire after 1 hour by default
+- Client secrets should be kept secure and never exposed to browsers
+- Use ResponseSecret to verify response data hasn't been tampered with
+- In production, use a proper session/state store instead of in-memory map
