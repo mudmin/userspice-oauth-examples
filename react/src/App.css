@@ -87,17 +87,6 @@ body {
     box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
 }
 
-.warning-box {
-    background: #fff3cd;
-    border: 1px solid #ffc107;
-    border-radius: 8px;
-    padding: 15px;
-    margin: 20px 0;
-    text-align: left;
-    font-size: 14px;
-    color: #856404;
-}
-
 .info-section {
     background: #f7fafc;
     border-radius: 8px;
@@ -162,25 +151,6 @@ body {
     margin: 0;
     white-space: pre-wrap;
     word-wrap: break-word;
-}
-
-.signature-badge {
-    display: inline-block;
-    padding: 8px 16px;
-    border-radius: 20px;
-    font-size: 14px;
-    font-weight: 600;
-    margin: 20px 0;
-}
-
-.signature-badge.verified {
-    background: #c6f6d5;
-    color: #276749;
-}
-
-.signature-badge.warning {
-    background: #feebc8;
-    color: #c05621;
 }
 
 .next-steps {

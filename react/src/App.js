@@ -11,12 +11,6 @@ function Home() {
         <h1>UserSpice OAuth Demo</h1>
         <p className="subtitle">React Client Example</p>
 
-        <div className="warning-box">
-          <strong>Security Notice:</strong> This is a frontend-only demo.
-          In production, token exchange and HMAC verification should happen
-          on a backend server. Never expose client secrets in frontend code.
-        </div>
-
         <Link to="/oauth_request" className="oauth-button">
           Login with UserSpice OAuth
         </Link>

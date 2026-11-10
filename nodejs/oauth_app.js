@@ -4,6 +4,7 @@
  * This is a Node.js/Express implementation of an OAuth 2.0 client for UserSpice.
  * It demonstrates the complete authorization code flow including:
  * - CSRF protection via state parameter
+ * - PKCE (RFC 7636, S256)
  * - Token exchange
  * - UserInfo endpoint fetching
  * - HMAC signature verification for response data
@@ -34,6 +35,30 @@ app.use(session({
 }));
 
 /**
+ * Base64url-encode a buffer without padding (RFC 7636 Appendix A)
+ */
+function base64UrlEncode(buffer) {
+    return buffer.toString('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+}
+
+/**
+ * Generate a PKCE code verifier: 32 random bytes, base64url (43 chars)
+ */
+function generateCodeVerifier() {
+    return base64UrlEncode(crypto.randomBytes(32));
+}
+
+/**
+ * Compute the PKCE S256 challenge: base64url(SHA-256(verifier))
+ */
+function codeChallengeS256(codeVerifier) {
+    return base64UrlEncode(crypto.createHash('sha256').update(codeVerifier, 'ascii').digest());
+}
+
+/**
  * Initiates the OAuth flow by redirecting to the authorization server
  */
 app.get('/oauth_request', (req, res) => {
@@ -41,13 +66,19 @@ app.get('/oauth_request', (req, res) => {
     const state = crypto.randomBytes(16).toString('hex');
     req.session.oauth_state = state;
 
+    // Generate a PKCE code verifier, used again at the token step
+    const codeVerifier = generateCodeVerifier();
+    req.session.oauth_code_verifier = codeVerifier;
+
     // Build authorization URL
     const authParams = querystring.stringify({
         response_type: 'code',
         client_id: config.client_id,
         redirect_uri: config.redirect_uri,
         state: state,
-        scope: config.scope
+        scope: config.scope,
+        code_challenge: codeChallengeS256(codeVerifier),
+        code_challenge_method: 'S256'
     });
 
     const authUrl = `${config.server_url}users/auth/?${authParams}`;
@@ -75,12 +106,18 @@ app.get('/oauth_response', async (req, res) => {
         return res.status(400).send(renderError('Invalid state parameter. Possible CSRF attack.'));
     }
 
-    // Clear state (one-time use)
+    // Read the PKCE code verifier, then clear it and the state (one-time use)
+    const codeVerifier = req.session.oauth_code_verifier;
     delete req.session.oauth_state;
+    delete req.session.oauth_code_verifier;
+
+    if (!codeVerifier) {
+        return res.status(400).send(renderError('Missing PKCE code verifier in session. Try starting the flow again.'));
+    }
 
     try {
         // Exchange code for access token
-        const tokenData = await exchangeCodeForToken(code);
+        const tokenData = await exchangeCodeForToken(code, codeVerifier);
 
         const accessToken = tokenData.access_token;
         const tokenType = tokenData.token_type || 'Bearer';
@@ -138,9 +175,9 @@ app.get('/oauth_response', async (req, res) => {
 });
 
 /**
- * Exchange the authorization code for an access token
+ * Exchange the authorization code and PKCE code verifier for an access token
  */
-async function exchangeCodeForToken(authCode) {
+async function exchangeCodeForToken(authCode, codeVerifier) {
     const tokenUrl = `${config.server_url}users/auth/`;
 
     const data = {
@@ -148,7 +185,8 @@ async function exchangeCodeForToken(authCode) {
         code: authCode,
         redirect_uri: config.redirect_uri,
         client_id: config.client_id,
-        client_secret: config.client_secret
+        client_secret: config.client_secret,
+        code_verifier: codeVerifier
     };
 
     const response = await axios.post(tokenUrl, querystring.stringify(data), {
@@ -166,7 +204,7 @@ async function exchangeCodeForToken(authCode) {
  * Fetch user information from the OAuth server's userinfo endpoint
  */
 async function fetchUserInfo(accessToken) {
-    const userInfoUrl = `${config.server_url}users/auth/userinfo`;
+    const userInfoUrl = `${config.server_url}users/auth/userinfo.php`;
 
     const response = await axios.get(userInfoUrl, {
         headers: {

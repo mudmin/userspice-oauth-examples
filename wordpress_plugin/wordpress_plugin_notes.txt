@@ -71,13 +71,15 @@ OAuth Flow
 2. OAuth login button appears above the standard WordPress login form
 3. User clicks "Login with UserSpice"
 4. Plugin generates a cryptographically secure state token (CSRF protection)
+   and a PKCE code verifier, both stored in the PHP session
 5. User is redirected to UserSpice /users/auth/ for authentication
+   (with the PKCE code_challenge)
 6. User logs in and authorizes the application
 7. UserSpice redirects back to WordPress with authorization code
 8. Plugin verifies the state parameter (prevents CSRF attacks)
 9. Plugin verifies HMAC signature (if configured)
-10. Plugin exchanges code for access token (POST to /users/auth/)
-11. Plugin fetches user info from /users/auth/userinfo
+10. Plugin exchanges code for access token (POST to /users/auth/ with code_verifier)
+11. Plugin fetches user info from /users/auth/userinfo.php
 12. WordPress user is created (if new) or updated (if existing)
 13. User is logged in and redirected to the dashboard/home
 
@@ -85,13 +87,13 @@ OAuth Endpoints
 ---------------
 Authorization: {server_url}users/auth/
 Token:         {server_url}users/auth/  (POST with grant_type=authorization_code)
-UserInfo:      {server_url}users/auth/userinfo  (GET with Bearer token)
+UserInfo:      {server_url}users/auth/userinfo.php  (GET or POST with Bearer token)
 
 User Data Handling
 ------------------
 The plugin retrieves user data from two sources:
 
-1. /userinfo endpoint (primary):
+1. userinfo.php endpoint (primary, OpenID Connect claims):
    - sub (user ID)
    - name
    - email
@@ -111,6 +113,24 @@ When a new user is created:
 When an existing user logs in:
 - User metadata is updated with latest UserSpice data
 - User is logged in with a persistent cookie
+
+PKCE (Proof Key for Code Exchange)
+----------------------------------
+The plugin sends PKCE (RFC 7636, S256) on every authorization request.
+
+How it works:
+1. When the login button is rendered, the plugin generates a random
+   code_verifier and stores it in the PHP session next to the state
+2. The authorization URL carries code_challenge (SHA-256 of the verifier,
+   base64url-encoded) and code_challenge_method=S256
+3. On the callback the plugin reads the verifier, clears it (single use,
+   like state), and sends it as code_verifier with the token request
+
+Clients created on UserSpice 6.2.0+ default to version 1, which requires
+PKCE (S256 only; "plain" is refused) and a redirect_uri at the token step
+that matches the one used at authorization. Version 0 clients and older
+UserSpice servers accept the PKCE parameters and ignore them, so the same
+plugin works against both.
 
 HMAC Response Signature Verification
 -------------------------------------
@@ -148,6 +168,14 @@ Troubleshooting
   - Make sure PHP sessions are working correctly.
   - Check that no caching plugins are caching the login page.
 
+"Missing PKCE code verifier"
+  - The PHP session lost the verifier (same causes as an invalid state).
+  - Start the OAuth flow again.
+
+"code_challenge with code_challenge_method=S256 is required"
+  - The UserSpice client is version 1 and the request had no PKCE.
+  - Make sure version 2.0.1 or later of this plugin is active.
+
 "OAuth state expired"
   - The state token is valid for 10 minutes.
   - Start the OAuth flow again.
@@ -182,6 +210,7 @@ Security Notes
 - Keep client_secret secure - never expose in frontend code
 - Use a strong response_secret (32+ characters, random)
 - The state parameter prevents CSRF attacks - never disable this
+- PKCE ties the authorization code to the session's code_verifier
 - Access tokens expire after 1 hour by default
 - User passwords are randomly generated - OAuth is required for login
 - Settings are sanitized using WordPress functions
@@ -194,6 +223,9 @@ successful authentication, so other plugins can hook into the login.
 
 Changelog
 ---------
+Version 2.0.1:
+- Send PKCE (S256) on every request and fetch user info from users/auth/userinfo.php
+
 Version 2.0:
 - Added HMAC signature verification (response_secret)
 - Added /userinfo endpoint fetching

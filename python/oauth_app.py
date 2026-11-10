@@ -4,6 +4,7 @@ UserSpice OAuth Client - Python/Flask Example
 This is a Python/Flask implementation of an OAuth 2.0 client for UserSpice.
 It demonstrates the complete authorization code flow including:
 - CSRF protection via state parameter
+- PKCE (RFC 7636, S256)
 - Token exchange
 - UserInfo endpoint fetching
 - HMAC signature verification for response data
@@ -29,6 +30,21 @@ app = Flask(__name__)
 app.secret_key = secrets.token_hex(32)  # Secret key for session management
 
 
+def base64url_encode(data):
+    """Base64url-encode bytes without padding (RFC 7636 Appendix A)"""
+    return base64.urlsafe_b64encode(data).rstrip(b'=').decode('ascii')
+
+
+def generate_code_verifier():
+    """Generate a PKCE code verifier: 32 random bytes, base64url (43 chars)"""
+    return base64url_encode(secrets.token_bytes(32))
+
+
+def code_challenge_s256(code_verifier):
+    """Compute the PKCE S256 challenge: base64url(SHA-256(verifier))"""
+    return base64url_encode(hashlib.sha256(code_verifier.encode('ascii')).digest())
+
+
 @app.route('/oauth_request')
 def oauth_request():
     """Initiates the OAuth flow by redirecting to the authorization server"""
@@ -36,13 +52,19 @@ def oauth_request():
     state = secrets.token_hex(16)
     session['oauth_state'] = state
 
+    # Generate a PKCE code verifier, used again at the token step
+    code_verifier = generate_code_verifier()
+    session['oauth_code_verifier'] = code_verifier
+
     # Build authorization URL
     auth_params = {
         'response_type': 'code',
         'client_id': OAUTH_SETTINGS['client_id'],
         'redirect_uri': OAUTH_SETTINGS['redirect_uri'],
         'state': state,
-        'scope': OAUTH_SETTINGS['scope']
+        'scope': OAUTH_SETTINGS['scope'],
+        'code_challenge': code_challenge_s256(code_verifier),
+        'code_challenge_method': 'S256'
     }
 
     auth_url = OAUTH_SETTINGS['server_url'] + 'users/auth/?' + urlencode(auth_params)
@@ -71,11 +93,15 @@ def oauth_response():
     if state != session.get('oauth_state'):
         return render_error('Invalid state parameter. Possible CSRF attack.'), 400
 
-    # Clear state (one-time use)
+    # Read the PKCE code verifier, then clear it and the state (one-time use)
+    code_verifier = session.pop('oauth_code_verifier', None)
     session.pop('oauth_state', None)
 
+    if not code_verifier:
+        return render_error('Missing PKCE code verifier in session. Try starting the flow again.'), 400
+
     # Exchange code for access token
-    token_data = exchange_code_for_token(auth_code)
+    token_data = exchange_code_for_token(auth_code, code_verifier)
     if 'error' in token_data:
         return render_error(f"Token exchange failed: {token_data['error']}"), 400
 
@@ -133,8 +159,8 @@ def oauth_response():
     return render_success(access_token, token_type, expires_in, token_data, user_info, user_info_error, response_data, signature_status)
 
 
-def exchange_code_for_token(auth_code):
-    """Exchange the authorization code for an access token"""
+def exchange_code_for_token(auth_code, code_verifier):
+    """Exchange the authorization code and PKCE code verifier for an access token"""
     token_url = OAUTH_SETTINGS['server_url'] + 'users/auth/'
 
     data = {
@@ -142,7 +168,8 @@ def exchange_code_for_token(auth_code):
         'code': auth_code,
         'redirect_uri': OAUTH_SETTINGS['redirect_uri'],
         'client_id': OAUTH_SETTINGS['client_id'],
-        'client_secret': OAUTH_SETTINGS['client_secret']
+        'client_secret': OAUTH_SETTINGS['client_secret'],
+        'code_verifier': code_verifier
     }
 
     try:
@@ -162,7 +189,7 @@ def exchange_code_for_token(auth_code):
 
 def fetch_user_info(access_token):
     """Fetch user information from the OAuth server's userinfo endpoint"""
-    user_info_url = OAUTH_SETTINGS['server_url'] + 'users/auth/userinfo'
+    user_info_url = OAUTH_SETTINGS['server_url'] + 'users/auth/userinfo.php'
 
     headers = {
         'Authorization': f'Bearer {access_token}',

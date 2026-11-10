@@ -65,20 +65,20 @@ OAuth Flow
 ----------
 1. User visits / (home page)
 2. User clicks "Login with UserSpice OAuth"
-3. Script generates CSRF state token, stores in session
-4. User redirected to UserSpice /users/auth/ for login
+3. Script generates CSRF state token and PKCE code verifier, stores both in session
+4. User redirected to UserSpice /users/auth/ for login (with the PKCE code_challenge)
 5. User authenticates and authorizes your application
 6. UserSpice redirects to /oauth_response with ?code=xxx&state=xxx
 7. Script verifies state token (CSRF protection)
-8. Script exchanges code for access token (POST to /users/auth/)
-9. Script fetches user info (GET to /users/auth/userinfo with Bearer token)
+8. Script exchanges code for access token (POST to /users/auth/ with code_verifier)
+9. Script fetches user info (GET to /users/auth/userinfo.php with Bearer token)
 10. Your application can now create/login the user
 
 OAuth Endpoints
 ---------------
 Authorization: {SERVER_URL}users/auth/
 Token:         {SERVER_URL}users/auth/  (POST with grant_type=authorization_code)
-UserInfo:      {SERVER_URL}users/auth/userinfo  (GET with Bearer token)
+UserInfo:      {SERVER_URL}users/auth/userinfo.php  (GET or POST with Bearer token)
 
 Expected Successful Output
 --------------------------
@@ -88,11 +88,14 @@ After completing the OAuth flow, you should see:
 - Token Type: Bearer
 - Expires In: 3600 seconds (1 hour)
 
-User Info from /userinfo endpoint:
+User Info from /userinfo endpoint (OpenID Connect claims):
 {
     "sub": "1",
     "name": "System Administrator",
-    "email": "admin@yourdomain.com"
+    "given_name": "System",
+    "family_name": "Administrator",
+    "email": "admin@yourdomain.com",
+    "email_verified": true
 }
 
 Response Data (UserSpice specific, via GET parameter):
@@ -133,6 +136,27 @@ Troubleshooting
   - Check that your server can reach the OAuth server
   - Verify HTTPS certificates if using SSL
 
+PKCE (Proof Key for Code Exchange)
+----------------------------------
+This client sends PKCE (RFC 7636, S256) on every authorization request.
+It uses the rand, sha2 and base64 crates already listed above.
+
+How it works:
+1. /oauth_request generates a random code_verifier and stores it in the session
+2. The authorization URL carries code_challenge (SHA-256 of the verifier,
+   base64url-encoded) and code_challenge_method=S256
+3. /oauth_response reads the verifier, clears it (single use, like state),
+   and sends it as code_verifier with the token request
+
+Clients created on UserSpice 6.2.0+ default to version 1, which requires
+PKCE (S256 only; "plain" is refused) and a redirect_uri at the token step
+that matches the one used at authorization. Version 0 clients and older
+UserSpice servers accept the PKCE parameters and ignore them, so the same
+code works against both.
+
+If a version 1 client is used without PKCE, UserSpice redirects back with:
+  "code_challenge with code_challenge_method=S256 is required"
+
 HMAC Response Signature Verification
 -------------------------------------
 UserSpice can sign the response data with HMAC-SHA256 to prevent tampering.
@@ -167,6 +191,7 @@ Security Notes
 - Always use HTTPS in production
 - Set cookie_secure to true in production (with HTTPS)
 - The state parameter prevents CSRF attacks - don't skip this check
+- PKCE ties the authorization code to this session's code_verifier
 - Access tokens expire after 1 hour by default
 - Client secrets should be kept secure and never exposed to browsers
 - Use RESPONSE_SECRET to verify response data hasn't been tampered with

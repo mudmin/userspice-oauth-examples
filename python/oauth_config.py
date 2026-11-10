@@ -39,4 +39,4 @@ OAUTH_SETTINGS = {
 #
 # Authorization: {server_url}users/auth/
 # Token:         {server_url}users/auth/
-# UserInfo:      {server_url}users/auth/userinfo
+# UserInfo:      {server_url}users/auth/userinfo.php

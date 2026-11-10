@@ -3,6 +3,7 @@
 //! This is a Rust/Actix-web implementation of an OAuth 2.0 client for UserSpice.
 //! It demonstrates the complete authorization code flow including:
 //! - CSRF protection via state parameter
+//! - PKCE (S256) code challenge and verifier
 //! - Token exchange
 //! - UserInfo endpoint fetching
 //! - HMAC signature verification for response data
@@ -18,7 +19,7 @@ use hmac::{Hmac, Mac};
 use rand::Rng;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 use std::env;
 use url::Url;
 use serde_json::Value;
@@ -118,7 +119,13 @@ async fn oauth_request(session: Session, data: web::Data<AppState>) -> impl Resp
         return HttpResponse::InternalServerError().body(format!("Session error: {}", e));
     }
 
-    let auth_url = generate_auth_url(&data.oauth_settings, &state);
+    // Generate a PKCE code verifier; only its S256 challenge goes on the URL
+    let code_verifier = generate_code_verifier();
+    if let Err(e) = session.insert("oauth_code_verifier", &code_verifier) {
+        return HttpResponse::InternalServerError().body(format!("Session error: {}", e));
+    }
+
+    let auth_url = generate_auth_url(&data.oauth_settings, &state, &code_challenge_for(&code_verifier));
     HttpResponse::Found()
         .insert_header(("Location", auth_url))
         .finish()
@@ -162,11 +169,20 @@ async fn oauth_response(
             .body(render_error("Invalid state parameter. Possible CSRF attack."));
     }
 
-    // Clear state (one-time use)
+    // Clear state and code verifier (one-time use)
     session.remove("oauth_state");
+    let saved_verifier: Option<String> = session.get("oauth_code_verifier").unwrap_or(None);
+    session.remove("oauth_code_verifier");
+
+    let code_verifier = match saved_verifier {
+        Some(v) => v,
+        None => return HttpResponse::BadRequest()
+            .content_type("text/html")
+            .body(render_error("Missing PKCE code verifier in session. Try starting the flow again.")),
+    };
 
     // Exchange code for access token
-    let token_data = match exchange_code_for_token(code, &data.oauth_settings).await {
+    let token_data = match exchange_code_for_token(code, &code_verifier, &data.oauth_settings).await {
         Ok(t) => t,
         Err(e) => return HttpResponse::BadRequest()
             .content_type("text/html")
@@ -246,14 +262,16 @@ async fn oauth_response(
     HttpResponse::Ok().content_type("text/html").body(html)
 }
 
-fn generate_auth_url(settings: &OAuthSettings, state: &str) -> String {
+fn generate_auth_url(settings: &OAuthSettings, state: &str, code_challenge: &str) -> String {
     let mut url = Url::parse(&format!("{}users/auth/", settings.server_url)).unwrap();
     url.query_pairs_mut()
         .append_pair("response_type", "code")
         .append_pair("client_id", &settings.client_id)
         .append_pair("redirect_uri", &settings.redirect_uri)
         .append_pair("state", state)
-        .append_pair("scope", &settings.scope);
+        .append_pair("scope", &settings.scope)
+        .append_pair("code_challenge", code_challenge)
+        .append_pair("code_challenge_method", "S256");
     url.to_string()
 }
 
@@ -263,6 +281,18 @@ fn generate_state() -> String {
         .take(32)
         .map(char::from)
         .collect()
+}
+
+/// PKCE code verifier (RFC 7636): 32 random bytes, base64url without padding (43 chars)
+fn generate_code_verifier() -> String {
+    let mut bytes = [0u8; 32];
+    rand::thread_rng().fill(&mut bytes[..]);
+    general_purpose::URL_SAFE_NO_PAD.encode(bytes)
+}
+
+/// PKCE S256 code challenge: base64url(SHA-256(verifier)) without padding
+fn code_challenge_for(code_verifier: &str) -> String {
+    general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(code_verifier.as_bytes()))
 }
 
 fn compute_hmac(message: &str, secret: &str) -> String {
@@ -279,8 +309,10 @@ fn constant_time_compare(a: &str, b: &str) -> bool {
     a.bytes().zip(b.bytes()).fold(0, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
+/// redirect_uri must match the one sent on the authorization request
 async fn exchange_code_for_token(
     code: &str,
+    code_verifier: &str,
     settings: &OAuthSettings,
 ) -> Result<TokenResponse, Box<dyn std::error::Error>> {
     let client = Client::new();
@@ -294,6 +326,7 @@ async fn exchange_code_for_token(
             ("redirect_uri", &settings.redirect_uri),
             ("client_id", &settings.client_id),
             ("client_secret", &settings.client_secret),
+            ("code_verifier", code_verifier),
         ])
         .send()
         .await?;
@@ -313,7 +346,7 @@ async fn fetch_user_info(
     settings: &OAuthSettings,
 ) -> Result<Value, Box<dyn std::error::Error>> {
     let client = Client::new();
-    let user_info_url = format!("{}users/auth/userinfo", settings.server_url);
+    let user_info_url = format!("{}users/auth/userinfo.php", settings.server_url);
 
     let response = client
         .get(&user_info_url)

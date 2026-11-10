@@ -3,6 +3,7 @@
 // This is a Go implementation of an OAuth 2.0 client for UserSpice.
 // It demonstrates the complete authorization code flow including:
 // - CSRF protection via state parameter
+// - PKCE (RFC 7636, S256)
 // - Token exchange
 // - UserInfo endpoint fetching
 // - HMAC signature verification for response data
@@ -30,11 +31,12 @@ import (
 	"sync"
 )
 
-// Simple in-memory state store (use a proper session store in production)
+// Simple in-memory state store mapping state to PKCE code verifier
+// (use a proper session store in production)
 var stateStore = struct {
 	sync.RWMutex
-	states map[string]bool
-}{states: make(map[string]bool)}
+	states map[string]string
+}{states: make(map[string]string)}
 
 func main() {
 	http.HandleFunc("/oauth_request", oauthRequest)
@@ -49,9 +51,16 @@ func oauthRequest(w http.ResponseWriter, r *http.Request) {
 	// Generate a random state for CSRF protection
 	state := generateState()
 
-	// Store the state (in production, use a proper session store)
+	// Generate a PKCE code verifier, used again at the token step
+	codeVerifier, err := generateCodeVerifier()
+	if err != nil {
+		renderError(w, "Unable to generate PKCE code verifier")
+		return
+	}
+
+	// Store the state and its code verifier (in production, use a proper session store)
 	stateStore.Lock()
-	stateStore.states[state] = true
+	stateStore.states[state] = codeVerifier
 	stateStore.Unlock()
 
 	// Build authorization URL
@@ -61,6 +70,8 @@ func oauthRequest(w http.ResponseWriter, r *http.Request) {
 	authParams.Set("redirect_uri", oauthConfig.RedirectURI)
 	authParams.Set("state", state)
 	authParams.Set("scope", oauthConfig.Scope)
+	authParams.Set("code_challenge", codeChallengeS256(codeVerifier))
+	authParams.Set("code_challenge_method", "S256")
 
 	authURL := oauthConfig.ServerURL + "users/auth/?" + authParams.Encode()
 	http.Redirect(w, r, authURL, http.StatusFound)
@@ -86,21 +97,21 @@ func oauthResponse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify state to prevent CSRF attacks
+	// Verify state to prevent CSRF attacks and read its PKCE code verifier
 	stateStore.Lock()
-	valid := stateStore.states[state]
+	codeVerifier, valid := stateStore.states[state]
 	if valid {
 		delete(stateStore.states, state) // One-time use
 	}
 	stateStore.Unlock()
 
-	if !valid {
+	if !valid || codeVerifier == "" {
 		renderError(w, "Invalid state parameter. Possible CSRF attack.")
 		return
 	}
 
 	// Exchange code for access token
-	tokenData, err := exchangeCodeForToken(code)
+	tokenData, err := exchangeCodeForToken(code, codeVerifier)
 	if err != nil {
 		renderError(w, fmt.Sprintf("Token exchange failed: %s", err.Error()))
 		return
@@ -155,8 +166,8 @@ func oauthResponse(w http.ResponseWriter, r *http.Request) {
 	renderSuccess(w, accessToken, tokenType, int(expiresIn), tokenData, userInfo, userInfoErr, responseData, signatureStatus)
 }
 
-// exchangeCodeForToken exchanges the authorization code for an access token
-func exchangeCodeForToken(authCode string) (map[string]interface{}, error) {
+// exchangeCodeForToken exchanges the authorization code and PKCE code verifier for an access token
+func exchangeCodeForToken(authCode, codeVerifier string) (map[string]interface{}, error) {
 	tokenURL := oauthConfig.ServerURL + "users/auth/"
 
 	data := url.Values{}
@@ -165,6 +176,7 @@ func exchangeCodeForToken(authCode string) (map[string]interface{}, error) {
 	data.Set("redirect_uri", oauthConfig.RedirectURI)
 	data.Set("client_id", oauthConfig.ClientID)
 	data.Set("client_secret", oauthConfig.ClientSecret)
+	data.Set("code_verifier", codeVerifier)
 
 	resp, err := http.Post(tokenURL, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 	if err != nil {
@@ -191,7 +203,7 @@ func exchangeCodeForToken(authCode string) (map[string]interface{}, error) {
 
 // fetchUserInfo retrieves user information from the OAuth server's userinfo endpoint
 func fetchUserInfo(accessToken string) (map[string]interface{}, error) {
-	userInfoURL := oauthConfig.ServerURL + "users/auth/userinfo"
+	userInfoURL := oauthConfig.ServerURL + "users/auth/userinfo.php"
 
 	req, err := http.NewRequest("GET", userInfoURL, nil)
 	if err != nil {
@@ -229,6 +241,21 @@ func generateState() string {
 	b := make([]byte, 16)
 	rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+// generateCodeVerifier creates a PKCE code verifier: 32 random bytes, base64url without padding (43 chars)
+func generateCodeVerifier() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// codeChallengeS256 computes the PKCE S256 challenge: base64url(SHA-256(verifier)) without padding
+func codeChallengeS256(codeVerifier string) string {
+	sum := sha256.Sum256([]byte(codeVerifier))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
 // computeHMAC calculates the HMAC-SHA256 signature

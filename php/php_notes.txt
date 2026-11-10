@@ -39,20 +39,45 @@ Setup Instructions
 OAuth Flow
 ----------
 1. User visits oauth_request.php
-2. Script generates CSRF state token, stores in session
-3. User redirected to UserSpice /users/auth/ for login
+2. Script generates CSRF state token and PKCE code verifier, stores them in session
+3. User redirected to UserSpice /users/auth/ for login (with the PKCE code_challenge)
 4. User authenticates and authorizes your application
 5. UserSpice redirects to oauth_response.php with ?code=xxx&state=xxx
 6. Script verifies state token (CSRF protection)
-7. Script exchanges code for access token (POST to /users/auth/)
-8. Script fetches user info (GET to /users/auth/userinfo with Bearer token)
+7. Script exchanges code + code_verifier for access token (POST to /users/auth/)
+8. Script fetches user info (GET to /users/auth/userinfo.php with Bearer token)
 9. Your application can now create/login the user
 
 OAuth Endpoints
 ---------------
 Authorization: {server_url}users/auth/
 Token:         {server_url}users/auth/  (POST with grant_type=authorization_code)
-UserInfo:      {server_url}users/auth/userinfo  (GET with Bearer token)
+UserInfo:      {server_url}users/auth/userinfo.php  (GET or POST with Bearer token)
+
+PKCE (Proof Key for Code Exchange)
+----------------------------------
+This client sends PKCE (RFC 7636, S256) on every authorization request:
+
+1. oauth_request.php generates a random code_verifier (32 random bytes,
+   base64url-encoded without padding, 43 characters), stores it in
+   the session next to the state, and adds
+   code_challenge=base64url(SHA-256(code_verifier)) and
+   code_challenge_method=S256 to the authorization URL.
+2. oauth_response.php reads the verifier, clears it (one-time use, like the
+   state), and sends it as code_verifier in the token request, together
+   with the same redirect_uri used at authorization.
+
+OAuth clients created on UserSpice 6.2.0 or later default to version 1,
+which requires PKCE (S256 only, "plain" is refused) and a redirect_uri at
+the token step that matches the authorization request. Version 0 clients
+and older UserSpice servers accept and ignore these parameters, so the
+same code works with both. PKCE is sent in addition to client_secret, not
+instead of it.
+
+UserInfo is served at {server_url}users/auth/userinfo.php (GET or POST with
+an Authorization: Bearer <access_token> header). It returns OpenID Connect
+claims: sub (string), name, given_name, family_name, email and
+email_verified (boolean).
 
 Expected Successful Output
 --------------------------
@@ -66,7 +91,10 @@ User Info from /userinfo endpoint:
 {
     "sub": "1",
     "name": "System Administrator",
-    "email": "admin@yourdomain.com"
+    "given_name": "System",
+    "family_name": "Administrator",
+    "email": "admin@yourdomain.com",
+    "email_verified": true
 }
 
 Response Data (UserSpice specific, via GET parameter):
@@ -127,6 +155,16 @@ Troubleshooting
 "Invalid state parameter"
   - Session may have expired. Try starting the flow again.
   - Make sure sessions are working on your server.
+
+"code_challenge with code_challenge_method=S256 is required"
+  - The client is version 1 and the authorization URL had no valid
+    S256 challenge. Make sure oauth_request.php adds code_challenge and
+    code_challenge_method=S256.
+
+"invalid_grant" at the token step (version 1 clients)
+  - The code_verifier was missing or did not match the challenge, or
+    redirect_uri was missing or different from the authorization request.
+  - Start the flow again from oauth_request.php so a fresh verifier is stored.
 
 "Invalid redirect_uri"
   - The redirect_uri in oauth_config.php must EXACTLY match

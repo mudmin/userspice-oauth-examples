@@ -1,69 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import oauthConfig from './oauthConfig';
 import './App.css';
-
-/**
- * Verify HMAC-SHA256 signature of response data
- * Note: In production, this should be done server-side!
- *
- * @param {string} data - The base64-encoded response data
- * @param {string} signature - The hex-encoded HMAC signature
- * @param {string} secret - The shared secret key
- * @returns {Promise<boolean>} - Whether the signature is valid
- */
-async function verifySignature(data, signature, secret) {
-    if (!secret || !signature) {
-        return { valid: false, reason: 'missing' };
-    }
-
-    try {
-        // Decode base64 response data
-        const decodedData = atob(data);
-
-        // Create HMAC-SHA256 key
-        const encoder = new TextEncoder();
-        const keyData = encoder.encode(secret);
-        const key = await crypto.subtle.importKey(
-            'raw',
-            keyData,
-            { name: 'HMAC', hash: 'SHA-256' },
-            false,
-            ['sign']
-        );
-
-        // Calculate expected signature
-        const messageData = encoder.encode(decodedData);
-        const signatureBuffer = await crypto.subtle.sign('HMAC', key, messageData);
-        const expectedSignature = Array.from(new Uint8Array(signatureBuffer))
-            .map(byte => byte.toString(16).padStart(2, '0'))
-            .join('');
-
-        // Constant-time comparison (best effort in JavaScript)
-        if (expectedSignature.length !== signature.length) {
-            return { valid: false, reason: 'invalid' };
-        }
-
-        let result = 0;
-        for (let i = 0; i < expectedSignature.length; i++) {
-            result |= expectedSignature.charCodeAt(i) ^ signature.charCodeAt(i);
-        }
-
-        return { valid: result === 0, reason: result === 0 ? 'valid' : 'invalid' };
-    } catch (err) {
-        console.error('Signature verification error:', err);
-        return { valid: false, reason: 'error' };
-    }
-}
 
 function OAuthResponse() {
     const [status, setStatus] = useState('loading');
     const [tokenData, setTokenData] = useState(null);
     const [userInfo, setUserInfo] = useState(null);
     const [responseData, setResponseData] = useState(null);
-    const [signatureStatus, setSignatureStatus] = useState(null);
     const [error, setError] = useState(null);
+    const handled = useRef(false);
 
     useEffect(() => {
+        // The code and verifier are single-use; don't run twice under StrictMode
+        if (handled.current) {
+            return;
+        }
+        handled.current = true;
         processOAuthCallback();
     }, []);
 
@@ -73,11 +25,16 @@ function OAuthResponse() {
             const code = urlParams.get('code');
             const state = urlParams.get('state');
             const response = urlParams.get('response');
-            const signature = urlParams.get('signature');
 
             // Verify state parameter (CSRF protection)
-            const storedState = localStorage.getItem('oauth_state');
-            const stateTime = localStorage.getItem('oauth_state_time');
+            const storedState = sessionStorage.getItem('oauth_state');
+            const stateTime = sessionStorage.getItem('oauth_state_time');
+            const codeVerifier = sessionStorage.getItem('oauth_code_verifier');
+
+            // Clear stored state and verifier
+            sessionStorage.removeItem('oauth_state');
+            sessionStorage.removeItem('oauth_state_time');
+            sessionStorage.removeItem('oauth_code_verifier');
 
             if (!state || state !== storedState) {
                 throw new Error('Invalid state parameter. Possible CSRF attack.');
@@ -88,32 +45,16 @@ function OAuthResponse() {
                 throw new Error('OAuth state expired. Please try again.');
             }
 
-            // Clear stored state
-            localStorage.removeItem('oauth_state');
-            localStorage.removeItem('oauth_state_time');
-
             if (!code) {
                 throw new Error('No authorization code received');
             }
 
-            // Verify HMAC signature if configured
-            if (oauthConfig.responseSecret) {
-                if (!signature) {
-                    throw new Error('Response signature required but not provided');
-                }
-                const sigResult = await verifySignature(response, signature, oauthConfig.responseSecret);
-                if (!sigResult.valid) {
-                    throw new Error('Invalid response signature. Data may have been tampered with.');
-                }
-                setSignatureStatus('verified');
-            } else if (signature) {
-                setSignatureStatus('unverified');
-                console.warn('Response signature provided but no secret configured. Cannot verify.');
-            } else {
-                setSignatureStatus('none');
+            if (!codeVerifier) {
+                throw new Error('PKCE code verifier not found. Please start the login again in this tab.');
             }
 
-            // Decode response data (UserSpice-specific)
+            // Decode response data (UserSpice-specific). Unsigned for public
+            // clients, so it is shown for display only and not used for identity.
             if (response) {
                 try {
                     const decodedResponse = JSON.parse(atob(response));
@@ -123,8 +64,7 @@ function OAuthResponse() {
                 }
             }
 
-            // Exchange authorization code for access token
-            // WARNING: In production, this should happen on a backend server!
+            // Exchange authorization code for access token (PKCE, no client secret)
             const tokenResponse = await fetch(`${oauthConfig.serverUrl}users/auth/`, {
                 method: 'POST',
                 headers: {
@@ -135,7 +75,7 @@ function OAuthResponse() {
                     code: code,
                     redirect_uri: oauthConfig.redirectUri,
                     client_id: oauthConfig.clientId,
-                    client_secret: oauthConfig.clientSecret,
+                    code_verifier: codeVerifier,
                 }),
             });
 
@@ -147,20 +87,25 @@ function OAuthResponse() {
             const tokens = await tokenResponse.json();
             setTokenData(tokens);
 
-            // Fetch user info from /userinfo endpoint
-            if (tokens.access_token) {
-                const userInfoResponse = await fetch(`${oauthConfig.serverUrl}users/auth/userinfo`, {
-                    method: 'GET',
-                    headers: {
-                        'Authorization': `Bearer ${tokens.access_token}`,
-                    },
-                });
-
-                if (userInfoResponse.ok) {
-                    const userData = await userInfoResponse.json();
-                    setUserInfo(userData);
-                }
+            if (!tokens.access_token) {
+                throw new Error('Token response did not include an access token');
             }
+
+            // Fetch the user's identity from the userinfo endpoint
+            const userInfoResponse = await fetch(`${oauthConfig.serverUrl}users/auth/userinfo.php`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${tokens.access_token}`,
+                },
+            });
+
+            if (!userInfoResponse.ok) {
+                const errorText = await userInfoResponse.text();
+                throw new Error(`Userinfo request failed: ${errorText}`);
+            }
+
+            const userData = await userInfoResponse.json();
+            setUserInfo(userData);
 
             setStatus('success');
         } catch (err) {
@@ -199,17 +144,6 @@ function OAuthResponse() {
             <div className="oauth-card success-card">
                 <h1>Authentication Successful!</h1>
 
-                {signatureStatus === 'verified' && (
-                    <div className="signature-badge verified">
-                        HMAC Signature Verified
-                    </div>
-                )}
-                {signatureStatus === 'unverified' && (
-                    <div className="signature-badge warning">
-                        Signature Present But Not Verified (no secret configured)
-                    </div>
-                )}
-
                 <div className="data-section">
                     <h3>Access Token</h3>
                     <div className="token-display">
@@ -223,7 +157,7 @@ function OAuthResponse() {
 
                 {userInfo && (
                     <div className="data-section">
-                        <h3>User Info (from /userinfo endpoint)</h3>
+                        <h3>User Identity (from userinfo.php)</h3>
                         <pre className="json-display">{JSON.stringify(userInfo, null, 2)}</pre>
                     </div>
                 )}
@@ -231,20 +165,22 @@ function OAuthResponse() {
                 {responseData && (
                     <>
                         <div className="data-section">
-                            <h3>User Data (from response parameter)</h3>
+                            <h3>User Data (from response parameter, unsigned)</h3>
                             <pre className="json-display">{JSON.stringify(responseData.userdata, null, 2)}</pre>
+                            <p className="hint">This data comes from the redirect URL and is not signed
+                                for public clients. Display only; use the userinfo claims for identity.</p>
                         </div>
 
                         {responseData.tags && (
                             <div className="data-section">
-                                <h3>Tags</h3>
+                                <h3>Tags (unsigned)</h3>
                                 <pre className="json-display">{JSON.stringify(responseData.tags, null, 2)}</pre>
                             </div>
                         )}
 
                         {responseData.instructions && (
                             <div className="data-section">
-                                <h3>Sync Instructions</h3>
+                                <h3>Sync Instructions (unsigned)</h3>
                                 <pre className="json-display">{JSON.stringify(responseData.instructions, null, 2)}</pre>
                             </div>
                         )}
@@ -255,9 +191,9 @@ function OAuthResponse() {
                     <h3>Next Steps</h3>
                     <p>In a real application, you would now:</p>
                     <ol>
-                        <li>Check if the user exists in your database</li>
+                        <li>Check if the user exists in your database (match on the userinfo "sub" claim)</li>
                         <li>Create a new user if they don't exist</li>
-                        <li>Update user data based on sync instructions</li>
+                        <li>Update user data from the userinfo claims</li>
                         <li>Create a local session for the user</li>
                         <li>Redirect to your application's dashboard</li>
                     </ol>

@@ -3,7 +3,7 @@
  * Plugin Name: UserSpice OAuth Client
  * Plugin URI: https://github.com/mudmin/wordpress-userspice-oauth-client
  * Description: OAuth2 client for UserSpice integration with WordPress
- * Version: 2.0
+ * Version: 2.0.1
  * Author: Dan Hoover
  * Author URI: https://userspice.com
  */
@@ -150,10 +150,10 @@ class UserSpice_OAuth_Client {
             <ol>
                 <li>User visits the WordPress login page</li>
                 <li>User clicks the UserSpice OAuth button</li>
-                <li>User is redirected to UserSpice for authentication</li>
+                <li>User is redirected to UserSpice for authentication (with a PKCE code challenge)</li>
                 <li>After login, user is redirected back with an authorization code</li>
-                <li>This plugin exchanges the code for an access token</li>
-                <li>User info is retrieved from the /userinfo endpoint</li>
+                <li>This plugin exchanges the code and PKCE code verifier for an access token</li>
+                <li>User info is retrieved from the userinfo.php endpoint</li>
                 <li>WordPress user is created (if new) or logged in (if existing)</li>
             </ol>
 
@@ -164,6 +164,7 @@ class UserSpice_OAuth_Client {
                 <li>Keep your client secret secure</li>
                 <li>Use a strong response secret for HMAC verification</li>
                 <li>The state parameter provides CSRF protection</li>
+                <li>PKCE (S256) is sent on every request; clients created on UserSpice 6.2.0+ require it</li>
             </ul>
         </div>
         <?php
@@ -316,15 +317,35 @@ class UserSpice_OAuth_Client {
         $_SESSION['oauth_state'] = $state;
         $_SESSION['oauth_state_time'] = time();
 
+        // PKCE code verifier (RFC 7636); only its S256 challenge goes on the URL
+        $code_verifier = $this->base64url_encode(random_bytes(32));
+        $_SESSION['oauth_code_verifier'] = $code_verifier;
+
         $params = array(
             'response_type' => 'code',
             'client_id' => $this->options['client_id'],
             'redirect_uri' => $this->options['redirect_uri'],
             'state' => $state,
-            'scope' => 'profile'
+            'scope' => 'profile',
+            'code_challenge' => $this->pkce_challenge($code_verifier),
+            'code_challenge_method' => 'S256'
         );
 
         return $this->options['server_url'] . 'users/auth/?' . http_build_query($params);
+    }
+
+    /**
+     * Base64url encoding without padding (RFC 4648 section 5)
+     */
+    private function base64url_encode($data) {
+        return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
+    }
+
+    /**
+     * PKCE S256 code challenge: base64url(SHA-256(verifier))
+     */
+    private function pkce_challenge($code_verifier) {
+        return $this->base64url_encode(hash('sha256', $code_verifier, true));
     }
 
     /**
@@ -351,9 +372,15 @@ class UserSpice_OAuth_Client {
             wp_die('OAuth state expired. Please try again.', 'OAuth Error', array('response' => 403));
         }
 
-        // Clear state from session
+        // Clear state and code verifier from session (one-time use)
+        $code_verifier = isset($_SESSION['oauth_code_verifier']) ? $_SESSION['oauth_code_verifier'] : '';
         unset($_SESSION['oauth_state']);
         unset($_SESSION['oauth_state_time']);
+        unset($_SESSION['oauth_code_verifier']);
+
+        if (empty($code_verifier)) {
+            wp_die('Missing PKCE code verifier. Please try again.', 'OAuth Error', array('response' => 403));
+        }
 
         // Get response and signature from URL
         $response = isset($_GET['response']) ? $_GET['response'] : null;
@@ -373,7 +400,7 @@ class UserSpice_OAuth_Client {
         }
 
         // Exchange authorization code for access token
-        $token_data = $this->exchange_code_for_token($_GET['code']);
+        $token_data = $this->exchange_code_for_token($_GET['code'], $code_verifier);
 
         if (isset($token_data['error'])) {
             wp_die('Token exchange error: ' . esc_html($token_data['error']), 'OAuth Error', array('response' => 400));
@@ -420,10 +447,10 @@ class UserSpice_OAuth_Client {
     }
 
     /**
-     * Fetch user info from the /userinfo endpoint
+     * Fetch user info from the userinfo.php endpoint
      */
     private function fetch_user_info($access_token) {
-        $userinfo_url = $this->options['server_url'] . 'users/auth/userinfo';
+        $userinfo_url = $this->options['server_url'] . 'users/auth/userinfo.php';
 
         $response = wp_remote_get($userinfo_url, array(
             'headers' => array(
@@ -519,7 +546,10 @@ class UserSpice_OAuth_Client {
         exit;
     }
 
-    private function exchange_code_for_token($code) {
+    /**
+     * Exchange the code for a token; redirect_uri must match the authorization request
+     */
+    private function exchange_code_for_token($code, $code_verifier) {
         $token_url = $this->options['server_url'] . 'users/auth/';
 
         $response = wp_remote_post($token_url, array(
@@ -528,7 +558,8 @@ class UserSpice_OAuth_Client {
                 'code' => $code,
                 'redirect_uri' => $this->options['redirect_uri'],
                 'client_id' => $this->options['client_id'],
-                'client_secret' => $this->options['client_secret']
+                'client_secret' => $this->options['client_secret'],
+                'code_verifier' => $code_verifier
             ),
             'timeout' => 30,
         ));

@@ -3,14 +3,14 @@
  *
  * Configure these settings to connect to your UserSpice OAuth server.
  *
- * SECURITY WARNING:
- * This is a frontend-only React demo. In production environments:
- * - NEVER expose client_secret in frontend code
- * - Token exchange should happen on a backend server
- * - HMAC signature verification should happen on a backend server
- * - Consider using a BFF (Backend for Frontend) pattern
+ * This is a public client: it has no client secret and proves the token
+ * exchange with PKCE (S256) and the redirect URI instead. In the UserSpice
+ * admin panel, create the client as Version 1, check "Public client", and add
+ * this app's origin (e.g. http://localhost:3000) under Allowed Browser Origins
+ * so the browser can call the token and userinfo endpoints.
  *
- * This configuration is for demonstration purposes only!
+ * PKCE uses crypto.subtle, which browsers only provide in a secure context
+ * (https, or http://localhost during development).
  */
 
 const oauthConfig = {
@@ -20,10 +20,6 @@ const oauthConfig = {
     // Your OAuth client ID (obtained from UserSpice admin panel)
     clientId: 'your_client_id',
 
-    // Your OAuth client secret (keep this secure!)
-    // WARNING: In production, this should NEVER be in frontend code!
-    clientSecret: 'your_client_secret',
-
     // The URL users will be redirected to after authorization
     // This MUST match exactly what is registered in the OAuth server
     redirectUri: 'http://localhost:3000/oauth_response',
@@ -31,14 +27,6 @@ const oauthConfig = {
     // OAuth scopes to request (space-separated)
     // Available scopes: profile (includes user data)
     scope: 'profile',
-
-    // HMAC Response Secret (optional but recommended for security)
-    // WARNING: In production, signature verification should happen server-side!
-    // If set, the OAuth server will sign the response data with HMAC-SHA256
-    // and this client will verify the signature to prevent tampering.
-    // This must match the 'response_secret' configured for your client in UserSpice.
-    // Leave empty to disable signature verification (not recommended for production).
-    responseSecret: '',
 };
 
 /**
@@ -46,7 +34,7 @@ const oauthConfig = {
  *
  * Authorization: {serverUrl}users/auth/
  * Token:         {serverUrl}users/auth/  (POST with grant_type=authorization_code)
- * UserInfo:      {serverUrl}users/auth/userinfo  (GET with Bearer token)
+ * UserInfo:      {serverUrl}users/auth/userinfo.php  (GET with Bearer token)
  */
 
 export default oauthConfig;

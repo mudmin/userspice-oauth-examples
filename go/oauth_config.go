@@ -51,4 +51,4 @@ type OAuthConfig struct {
 //
 // Authorization: {ServerURL}users/auth/
 // Token:         {ServerURL}users/auth/
-// UserInfo:      {ServerURL}users/auth/userinfo
+// UserInfo:      {ServerURL}users/auth/userinfo.php

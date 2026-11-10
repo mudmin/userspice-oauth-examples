@@ -3,6 +3,7 @@
 # This is a Ruby/Sinatra implementation of an OAuth 2.0 client for UserSpice.
 # It demonstrates the complete authorization code flow including:
 # - CSRF protection via state parameter
+# - PKCE (S256) code challenge and verifier
 # - Token exchange
 # - UserInfo endpoint fetching
 # - HMAC signature verification for response data
@@ -18,6 +19,7 @@ require 'httparty'
 require 'json'
 require 'securerandom'
 require 'base64'
+require 'digest'
 require 'openssl'
 require 'cgi'
 require_relative 'oauth_config'
@@ -48,13 +50,19 @@ get '/oauth_request' do
   state = SecureRandom.hex(16)
   session[:oauth_state] = state
 
+  # Generate a PKCE code verifier; only its S256 challenge goes on the URL
+  code_verifier = generate_code_verifier
+  session[:oauth_code_verifier] = code_verifier
+
   # Build authorization URL
   auth_params = {
     response_type: 'code',
     client_id: OAUTH_SETTINGS[:client_id],
     redirect_uri: OAUTH_SETTINGS[:redirect_uri],
     state: state,
-    scope: OAUTH_SETTINGS[:scope]
+    scope: OAUTH_SETTINGS[:scope],
+    code_challenge: code_challenge_for(code_verifier),
+    code_challenge_method: 'S256'
   }
 
   auth_url = "#{OAUTH_SETTINGS[:server_url]}users/auth/?#{URI.encode_www_form(auth_params)}"
@@ -79,12 +87,17 @@ get '/oauth_response' do
     return render_error('Invalid state parameter. Possible CSRF attack.')
   end
 
-  # Clear state (one-time use)
+  # Clear state and code verifier (one-time use)
   session.delete(:oauth_state)
+  code_verifier = session.delete(:oauth_code_verifier)
+
+  unless code_verifier
+    return render_error('Missing PKCE code verifier in session. Try starting the flow again.')
+  end
 
   # Exchange code for access token
   begin
-    token_data = exchange_code_for_token(params[:code])
+    token_data = exchange_code_for_token(params[:code], code_verifier)
   rescue StandardError => e
     return render_error("Token exchange failed: #{e.message}")
   end
@@ -144,7 +157,8 @@ get '/oauth_response' do
 end
 
 # Exchange the authorization code for an access token
-def exchange_code_for_token(auth_code)
+# redirect_uri must match the one sent on the authorization request
+def exchange_code_for_token(auth_code, code_verifier)
   token_url = "#{OAUTH_SETTINGS[:server_url]}users/auth/"
 
   response = HTTParty.post(token_url,
@@ -153,7 +167,8 @@ def exchange_code_for_token(auth_code)
       code: auth_code,
       redirect_uri: OAUTH_SETTINGS[:redirect_uri],
       client_id: OAUTH_SETTINGS[:client_id],
-      client_secret: OAUTH_SETTINGS[:client_secret]
+      client_secret: OAUTH_SETTINGS[:client_secret],
+      code_verifier: code_verifier
     },
     timeout: 30
   )
@@ -167,7 +182,7 @@ end
 
 # Fetch user information from the OAuth server's userinfo endpoint
 def fetch_user_info(access_token)
-  user_info_url = "#{OAUTH_SETTINGS[:server_url]}users/auth/userinfo"
+  user_info_url = "#{OAUTH_SETTINGS[:server_url]}users/auth/userinfo.php"
 
   response = HTTParty.get(user_info_url,
     headers: {
@@ -182,6 +197,16 @@ def fetch_user_info(access_token)
   end
 
   JSON.parse(response.body)
+end
+
+# PKCE code verifier (RFC 7636): 32 random bytes, base64url without padding (43 chars)
+def generate_code_verifier
+  Base64.urlsafe_encode64(SecureRandom.random_bytes(32), padding: false)
+end
+
+# PKCE S256 code challenge: base64url(SHA-256(verifier)) without padding
+def code_challenge_for(code_verifier)
+  Base64.urlsafe_encode64(Digest::SHA256.digest(code_verifier), padding: false)
 end
 
 # Timing-safe string comparison to prevent timing attacks

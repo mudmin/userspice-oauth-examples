@@ -3,27 +3,25 @@ UserSpice OAuth Client - React Example
 
 This is a React implementation of an OAuth 2.0 client for UserSpice.
 
-IMPORTANT SECURITY NOTICE
--------------------------
-This is a FRONTEND-ONLY demo application. In production environments:
-- NEVER expose client_secret in frontend JavaScript code
-- Token exchange should happen on a backend server
-- HMAC signature verification should happen on a backend server
-- Consider using a BFF (Backend for Frontend) pattern
+This is a PUBLIC client: there is no client secret in the browser. The token
+exchange is proven with PKCE (S256) and the redirect_uri instead, and the
+user's identity comes from the userinfo endpoint.
 
-This example is for demonstration and learning purposes only!
+PKCE uses crypto.subtle, which browsers only provide in a secure context:
+serve the app over https, or use http://localhost during development.
 
 Requirements
 ------------
 - Node.js 14+ and npm
-- A UserSpice installation with OAuth Server plugin
+- A UserSpice installation with the OAuth Server enabled (6.2.0 or later
+  for Version 1 public clients)
 
 Files
 -----
 - src/oauthConfig.js   - Configuration settings (edit this first!)
 - src/App.js           - Main app with routing
 - src/App.css          - Styling for the OAuth demo
-- src/OAuthRequest.js  - Initiates OAuth flow with CSRF protection
+- src/OAuthRequest.js  - Initiates OAuth flow with state and PKCE
 - src/OAuthResponse.js - Handles callback, token exchange, and userinfo
 
 Setup Instructions
@@ -46,16 +44,18 @@ Setup Instructions
 5. Edit src/oauthConfig.js with your settings:
    - serverUrl:       Your UserSpice OAuth server URL (with trailing slash)
    - clientId:        From UserSpice admin panel > OAuth Server > Clients
-   - clientSecret:    From UserSpice admin panel (keep this secure!)
    - redirectUri:     Must EXACTLY match what's registered in UserSpice
    - scope:           Usually "profile" for user information
-   - responseSecret:  (Optional) HMAC secret for verifying response signatures
 
 6. Register your client in UserSpice:
    - Log into your UserSpice admin panel
    - Go to OAuth Server settings
    - Add a new OAuth client
+   - Set the client Version to 1 (requires PKCE S256)
+   - Check "Public client" (no client secret is checked at the token step)
    - Set the redirect_uri to: http://localhost:3000/oauth_response
+   - Under Allowed Browser Origins, add: http://localhost:3000
+     (scheme://host[:port], no path)
 
 7. Run the development server:
    npm start
@@ -66,21 +66,24 @@ OAuth Flow
 ----------
 1. User visits / (home page) and clicks "Login with UserSpice OAuth"
 2. OAuthRequest component generates cryptographically secure state token
-3. State is stored in localStorage with timestamp
-4. User is redirected to UserSpice /users/auth/ for login
+   and a PKCE code verifier, and derives the S256 code challenge from it
+3. State (with timestamp) and verifier are stored in sessionStorage
+4. User is redirected to UserSpice /users/auth/ for login, with
+   code_challenge and code_challenge_method=S256
 5. User authenticates and authorizes your application
 6. UserSpice redirects to /oauth_response with ?code=xxx&state=xxx
+   (plus an unsigned &response= parameter with display data)
 7. OAuthResponse verifies state token (CSRF protection)
-8. OAuthResponse verifies HMAC signature (if configured)
-9. OAuthResponse exchanges code for access token
-10. OAuthResponse fetches user info from /userinfo endpoint
-11. Your application can now create/login the user
+8. OAuthResponse exchanges code for access token, sending code_verifier and
+   redirect_uri (no client_secret)
+9. OAuthResponse fetches the user's identity from userinfo.php
+10. Your application can now create/login the user
 
 OAuth Endpoints
 ---------------
 Authorization: {serverUrl}users/auth/
 Token:         {serverUrl}users/auth/  (POST with grant_type=authorization_code)
-UserInfo:      {serverUrl}users/auth/userinfo  (GET with Bearer token)
+UserInfo:      {serverUrl}users/auth/userinfo.php  (GET with Bearer token)
 
 Expected Successful Output
 --------------------------
@@ -90,14 +93,17 @@ Access Token: 64-character hex string
 Token Type: Bearer
 Expires In: 3600 seconds (1 hour)
 
-User Info from /userinfo endpoint:
+User Identity from userinfo.php:
 {
     "sub": "1",
     "name": "System Administrator",
-    "email": "admin@yourdomain.com"
+    "given_name": "System",
+    "family_name": "Administrator",
+    "email": "admin@yourdomain.com",
+    "email_verified": true
 }
 
-User Data from response parameter:
+User Data from response parameter (unsigned, display only):
 {
     "fname": "System",
     "lname": "Administrator",
@@ -121,8 +127,8 @@ Troubleshooting
 ---------------
 "Invalid state parameter"
   - State may have expired (10 minute timeout). Try starting the flow again.
-  - Make sure localStorage is enabled in your browser.
-  - Private/incognito mode may cause issues with localStorage.
+  - Make sure sessionStorage is enabled in your browser.
+  - sessionStorage is per tab: start and finish the login in the same tab.
 
 "Invalid redirect_uri"
   - The redirectUri in oauthConfig.js must EXACTLY match
@@ -130,39 +136,36 @@ Troubleshooting
   - Check for trailing slashes, http vs https, etc.
 
 "Invalid client"
-  - Verify clientId and clientSecret are correct
+  - Verify clientId is correct
   - Make sure the client is enabled in UserSpice admin
+  - Make sure the client is Version 1 with "Public client" checked;
+    otherwise the server expects a client secret
 
 "CORS errors"
-  - The OAuth server must allow requests from your React app's origin
-  - In production, use a backend server for token exchange
+  - Add your React app's origin (e.g. http://localhost:3000) under
+    Allowed Browser Origins on the client in UserSpice admin
+  - If the preflight (OPTIONS) returns 204 without an
+    Access-Control-Allow-Origin header, the origin isn't registered or the
+    client isn't a Version 1 public client
 
-"Token exchange failed"
+"Token exchange failed" / invalid_grant
   - Check browser console for detailed error messages
-  - Verify client credentials are correct
+  - The code_verifier must match the code_challenge sent at authorization;
+    start the login again from the home page if the verifier was lost
+  - redirectUri must be identical at authorization and token exchange
+  - Authorization codes are single-use and expire quickly
 
-HMAC Response Signature Verification
--------------------------------------
-UserSpice can sign the response data with HMAC-SHA256 to prevent tampering.
-This is optional but recommended for production environments.
+"PKCE requires crypto.subtle"
+  - crypto.subtle only exists in a secure context. Serve the app over https,
+    or use http://localhost (not a LAN IP or hostname over plain http).
 
-WARNING: In this frontend demo, the responseSecret is exposed in the
-JavaScript bundle. In production, signature verification should happen
-on a backend server.
-
-How it works:
-1. Configure a 'response_secret' for your OAuth client in UserSpice admin
-2. Set the same secret in oauthConfig.js as 'responseSecret'
-3. When users authenticate, the server signs the response JSON with HMAC-SHA256
-4. The client verifies the signature using Web Crypto API
-
-The signature is passed as a &signature= parameter in the callback URL.
-
-Verification behavior:
-- If responseSecret is set and signature is valid: Response is trusted
-- If responseSecret is set but signature is missing/invalid: Request is REJECTED
-- If responseSecret is empty but signature is provided: Warning shown, continues
-- If neither is set: No signature verification (less secure)
+Callback Response Data
+----------------------
+The callback URL also carries a &response= parameter (base64 JSON with
+userdata, tags and sync instructions). Confidential clients can have it
+signed with an HMAC response secret, but a public client can't keep a
+secret, so here the data is unsigned and anyone could alter it. This demo
+shows it for display only; the user's identity comes from userinfo.php.
 
 Production Recommendations
 --------------------------
@@ -170,7 +173,6 @@ For a production implementation, you should:
 
 1. Create a backend API (Node.js, Python, Go, etc.) to handle:
    - Token exchange (POST to /users/auth/)
-   - HMAC signature verification
    - Storing tokens securely
    - User session management
 
@@ -187,11 +189,13 @@ For a production implementation, you should:
 
 Security Notes
 --------------
-- This demo exposes client_secret in the browser - NEVER do this in production
+- This demo is a public client: no client_secret is in the browser code
 - Always use HTTPS in production
-- Use crypto.getRandomValues() for state generation (not Math.random())
+- Use crypto.getRandomValues() for state and code verifier generation
+  (not Math.random())
+- PKCE must use S256; the server refuses "plain"
 - State tokens expire after 10 minutes for security
 - The state parameter prevents CSRF attacks - don't skip this check
 - Access tokens expire after 1 hour by default
-- Use responseSecret to verify response data hasn't been tampered with
+- Don't trust the unsigned response parameter for identity; use userinfo.php
 - Consider using httpOnly cookies for token storage in production

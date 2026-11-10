@@ -9,7 +9,7 @@
  * Flow:
  * 1. OAuth server redirects user here with ?code=xxx&state=xxx
  * 2. Script verifies state parameter to prevent CSRF attacks
- * 3. Script exchanges authorization code for access token
+ * 3. Script exchanges authorization code (plus PKCE code verifier) for access token
  * 4. Script uses access token to fetch user info from /userinfo endpoint
  * 5. Application can now authenticate/create the user locally
  */
@@ -41,8 +41,13 @@ if (!isset($_SESSION['oauth_state']) || $state !== $_SESSION['oauth_state']) {
     die('Error: Invalid state parameter. Possible CSRF attack.');
 }
 
-// Clear the state from session (one-time use)
-unset($_SESSION['oauth_state']);
+// Read the PKCE code verifier, then clear it and the state from session (one-time use)
+$codeVerifier = $_SESSION['oauth_code_verifier'] ?? '';
+unset($_SESSION['oauth_state'], $_SESSION['oauth_code_verifier']);
+
+if ($codeVerifier === '') {
+    die('Error: Missing PKCE code verifier in session. Try starting the flow again.');
+}
 
 // Exchange the authorization code for an access token
 $tokenEndpoint = $oSettings['server_url'] . 'users/auth/';
@@ -51,7 +56,8 @@ $tokenResult = exchangeCodeForToken(
     $oSettings['client_id'],
     $oSettings['client_secret'],
     $authCode,
-    $oSettings['redirect_uri']
+    $oSettings['redirect_uri'],
+    $codeVerifier
 );
 
 if (isset($tokenResult['error'])) {
@@ -64,7 +70,7 @@ $tokenType = $tokenResult['token_type'] ?? 'Bearer';
 $expiresIn = $tokenResult['expires_in'] ?? 3600;
 
 // Fetch user information using the access token
-$userInfoEndpoint = $oSettings['server_url'] . 'users/auth/userinfo';
+$userInfoEndpoint = $oSettings['server_url'] . 'users/auth/userinfo.php';
 $userInfo = fetchUserInfo($userInfoEndpoint, $accessToken);
 
 // Also check for response data passed via GET parameter (UserSpice specific)
@@ -215,15 +221,17 @@ if (isset($_GET['response'])) {
  * @param string $clientSecret The OAuth client secret
  * @param string $authCode    The authorization code from the callback
  * @param string $redirectUri The redirect URI (must match original request)
+ * @param string $codeVerifier The PKCE code verifier from the authorization request
  * @return array The token response or error array
  */
-function exchangeCodeForToken($tokenUrl, $clientId, $clientSecret, $authCode, $redirectUri) {
+function exchangeCodeForToken($tokenUrl, $clientId, $clientSecret, $authCode, $redirectUri, $codeVerifier) {
     $postData = [
         'grant_type'    => 'authorization_code',
         'code'          => $authCode,
         'redirect_uri'  => $redirectUri,
         'client_id'     => $clientId,
         'client_secret' => $clientSecret,
+        'code_verifier' => $codeVerifier,
     ];
 
     $ch = curl_init($tokenUrl);
